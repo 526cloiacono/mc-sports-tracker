@@ -11,13 +11,12 @@ export function validate(s) { if (!s || s.version !== 1 || !['cards', 'sales', '
     if (typeof x.id !== 'string' || ids.has(x.id))
         throw Error('Invalid record ID.');
     ids.add(x.id);
-} const money = x => Number.isSafeInteger(x) && x >= 0; const certs = new Set(); for (const c of s.cards) {
-    if (typeof c.name !== 'string' || typeof c.details !== 'string' || typeof c.cert !== 'string' || !['Raw', 'PSA'].includes(c.grading) || typeof c.grade !== 'string' || !Number.isInteger(c.qty) || c.qty < 1 || !money(c.cost))
+} const money = x => Number.isSafeInteger(x) && x >= 0; for (const c of s.cards) {
+    if (typeof c.name !== 'string' || typeof c.details !== 'string' || typeof c.cert !== 'string' || !['Raw', 'PSA', 'SGC', 'Other'].includes(c.grading) || typeof c.grade !== 'string' || !Number.isInteger(c.qty) || c.qty < 1 || !money(c.cost))
         throw Error('Invalid card.');
-    if (c.grading === 'PSA' && (!/^\d{6,12}$/.test(c.cert) || c.qty !== 1 || certs.has(c.cert)))
-        throw Error('Invalid or duplicate PSA cert.');
-    if (c.cert)
-        certs.add(c.cert);
+    if (c.grading === 'PSA' && (!/^\d{6,12}$/.test(c.cert) || c.qty !== 1))
+        throw Error('Invalid PSA cert or quantity.');
+    if (c.grading !== 'Raw' && (c.qty !== 1 || !c.cert.trim() || !c.grade.trim())) throw Error('Graded purchases need a cert, grade, and quantity 1.');
 } for (const x of s.sales) {
     const c = s.cards.find(c => c.id === x.cardId);
     if (!c || !Number.isInteger(x.qty) || x.qty < 1 || ![x.total, x.fees, x.cost].every(money) || x.cost !== x.qty * c.cost || typeof x.date !== 'string' || typeof x.name !== 'string')
@@ -50,13 +49,15 @@ export function showTotals(s) {
     }, { quantity: 0, cost: 0, entries: 0 });
 }
 
+export const isCertSearch = (s, query = '') => !!query.trim() && s.cards.some(c => c.cert && c.cert.toLowerCase().includes(query.trim().toLowerCase()));
+
 export function selectCards(s, { query = '', grading = 'all', status = 'available', sort = 'recent', showOnly = false } = {}) {
-    const q = query.trim().toLowerCase();
+    const q = query.trim().toLowerCase(), certSearch = isCertSearch(s, q);
     const cards = s.cards.filter(c => {
         const available = remaining(s, c);
         return (!showOnly || c.showQty > 0)
-            && (showOnly || status === 'all' || (status === 'sold' ? available === 0 : available > 0))
-            && (grading === 'all' || c.grading === grading)
+            && (showOnly || certSearch || status === 'all' || (status === 'sold' ? available === 0 : available > 0))
+            && (grading === 'all' || (grading === 'Graded' && c.grading !== 'Raw') || c.grading === grading)
             && `${c.name} ${c.details} ${c.cert} ${c.notes || ''}`.toLowerCase().includes(q);
     });
     const order = new Map(s.cards.map((c, i) => [c.id, i]));
@@ -77,4 +78,5 @@ export function saleInsights(s, from = '', to = '') {
     return { transactions: sales.length, quantity, saleProfit,
         averageProfit: quantity ? Math.round(saleProfit / quantity) : 0 };
 }
+
 

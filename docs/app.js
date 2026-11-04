@@ -1,4 +1,4 @@
-import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, setShowQuantity, showTotals, selectCards, saleInsights } from './model.js';
+import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, setShowQuantity, showTotals, selectCards, saleInsights, isCertSearch } from './model.js';
 const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [] });
 let state = fresh(), tab = 'inventory', mode, id;
 let account = null, revision = null, ready = false, busy = false, generation = 0;
@@ -88,13 +88,13 @@ function render() {
         const cards = selectCards(state, { query: q, grading, status: $('#status-filter').value,
             sort: $('#sort').value, showOnly: tab === 'show' });
         count = cards.length;
-        heads = ['Card / player', 'Grade / cert', tab === 'show' ? 'Bringing / available' : 'Owned', 'Cost / card', 'Actions'];
+        heads = ['Card / player', 'Grade / cert', 'Purchased', tab === 'show' ? 'Bringing / available' : 'Owned', 'Cost / card', 'Actions'];
         rows = cards.map(c => {
             const available = remaining(state, c);
             const owned = state.cards.filter(x => x.name.toLowerCase() === c.name.toLowerCase() && x.details.toLowerCase() === c.details.toLowerCase() && x.grading === c.grading && x.grade === c.grade).reduce((n, x) => n + remaining(state, x), 0);
-            return `<tr><td><b>${esc(c.name)}</b><small>${esc(c.details) || 'No set details'}</small>${c.purchaseDate ? `<small>Purchased ${esc(c.purchaseDate)}</small>` : ''}${c.notes ? `<small>${esc(c.notes)}</small>` : ''}${c.showQty > 0 && tab !== 'show' ? `<span class="show-badge">${c.showQty} on show list</span>` : ''}</td>
+            return `<tr><td><b>${esc(c.name)}</b><small>${esc(c.details) || 'No set details'}</small>${c.notes ? `<small>${esc(c.notes)}</small>` : ''}${c.showQty > 0 && tab !== 'show' ? `<span class="show-badge">${c.showQty} on show list</span>` : ''}</td>
                 <td><span class="badge">${esc(c.grading)} ${esc(c.grade)}</span><small>${c.cert ? '#' + esc(c.cert) : 'Ungraded'}</small></td>
-                <td><b>${tab === 'show' ? `${c.showQty} / ${available}` : available}</b><small>${owned} matching in collection</small></td><td>${money(c.cost)}</td>
+                <td>${esc(c.purchaseDate) || 'Date not recorded'}<small>${c.qty} purchased in this entry</small></td><td><b>${tab === 'show' ? `${c.showQty} / ${available}` : available}</b><small>${owned} matching in collection</small></td><td>${money(c.cost)}</td>
                 <td class="actions">${available > 0 ? `<button data-action="sell" data-id="${esc(c.id)}">Sell</button><button data-action="show" data-id="${esc(c.id)}">${c.showQty > 0 ? 'Adjust show qty' : 'Bring to show'}</button>` : '<span class="sold-badge">Sold out</span>'}${tab === 'show' ? `<button data-action="unpack" data-id="${esc(c.id)}">Take off list</button>` : `<button data-action="edit" data-id="${esc(c.id)}">Edit</button><button data-action="remove" data-id="${esc(c.id)}">Remove</button>`}</td></tr>`;
         }).join('');
     }
@@ -110,7 +110,7 @@ function render() {
         count = expenses.length;
         rows = expenses.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.category)}</td><td>${esc(x.date)}</td><td>${money(x.amount)}</td><td><button data-action="deleteExpense" data-id="${esc(x.id)}">Remove</button></td></tr>`).join('');
     }
-    $('#result-count').textContent = `${count} ${count === 1 ? 'record' : 'records'} shown · ${tab === 'show' ? 'Print and export include your entire show list.' : 'CSV exports all records, regardless of filters.'}`;
+    $('#result-count').textContent = `${count} ${count === 1 ? 'record' : 'records'} shown · ${tab === 'inventory' && isCertSearch(state,q) ? 'Cert search includes sold purchases · ' : ''} ${tab === 'show' ? 'Print and export include your entire show list.' : 'CSV exports all records, regardless of filters.'}`;
     const filtered = q || (isCards && grading !== 'all') || (tab === 'inventory' && $('#status-filter').value !== 'available');
     const emptyTitle = filtered ? 'No matching records' : tab === 'show' ? 'Build your show lineup.' : tab === 'inventory' ? 'Your next flip starts here.' : 'No records yet.';
     const emptyBody = filtered ? 'Try another search or change your filters.' : tab === 'show' ? 'Choose cards from inventory and select Bring to show. Set the quantity you plan to pack.' : tab === 'inventory' ? 'Add your first card to start tracking your collection and profit.' : 'Your records will appear here as you add them.';
@@ -125,19 +125,25 @@ function open(kind, recordId) {
     let c = state.cards.find(x => x.id === id);
     $('#modal-title').textContent = { card: 'Add a card', edit: 'Edit card', sell: 'Record a sale', expense: 'Add expense', show: 'Bring to a show' }[kind];
     if (kind === 'card' || kind === 'edit') {
-        $('#fields').innerHTML = `<label>Grading<select name="grading"><option>Raw</option><option ${c?.grading === 'PSA' ? 'selected' : ''}>PSA</option></select></label>` + input('cert', 'PSA cert number', c?.cert || '', 'text', 'inputmode="numeric" maxlength="12"') + input('name', 'Player / card name', c?.name || '', 'text', 'required maxlength="120"') + input('details', 'Year, set, card #, parallel', c?.details || '', 'text', 'maxlength="200"') + input('grade', 'Grade (PSA)', c?.grade || '', 'text', 'maxlength="12"') + input('qty', 'Quantity purchased', c?.qty || 1, 'number', 'required min="1" step="1"') + input('cost', 'Cost per card ($)', c ? c.cost / 100 : '', 'number', 'required min="0" step="0.01"') + input('purchaseDate', 'Purchase date', c?.purchaseDate || (c ? '' : today()), 'date') + input('notes', 'Notes', c?.notes || '', 'text', 'maxlength="500"') + '<small class="wide">Add each PSA slab separately. Matching cards are counted together. Include acquisition/grading costs in cost per card.</small>';
-        const updateGrading = () => { const psa = $('[name="grading"]').value === 'PSA'; for (const name of ['cert', 'grade']) {
-            $(`[name="${name}"]`).closest('label').hidden = !psa;
-            $(`[name="${name}"]`).required = psa;
-        } $('[name="qty"]').readOnly = psa; if (psa)
-            $('[name="qty"]').value = '1'; };
+        $('#fields').innerHTML = `<label>Card type<select name="cardType"><option value="Raw">Raw</option><option value="Graded" ${c && c.grading !== 'Raw' ? 'selected' : ''}>Graded</option></select></label><label>Grading company<select name="grading">${['PSA','SGC','Other'].map(g=>`<option ${c?.grading===g?'selected':''}>${g}</option>`).join('')}</select></label>` + input('cert', 'Cert number', c?.cert || '', 'text', 'maxlength="80"') + input('name', 'Player / card name', c?.name || '', 'text', 'required maxlength="120"') + input('details', 'Year, set, card #, parallel', c?.details || '', 'text', 'maxlength="200"') + input('grade', 'Grade', c?.grade || '', 'text', 'maxlength="30"') + input('qty', 'Quantity purchased', c?.qty || 1, 'number', 'required min="1" step="1"') + input('cost', 'Cost per card ($)', c ? c.cost / 100 : '', 'number', 'required min="0" step="0.01"') + input('purchaseDate', 'Purchase date', c?.purchaseDate || (c ? '' : today()), 'date', c ? '' : 'required') + input('notes', 'Notes', c?.notes || '', 'text', 'maxlength="500"') + '<small class="wide">Each entry is a separate purchase with its own date and cost. You can reuse a cert for another purchase. Add graded slabs one at a time; record sales against the purchase you are selling.</small>';
+        const updateGrading = () => {
+            const graded = $('[name="cardType"]').value === 'Graded';
+            for (const name of ['grading', 'cert', 'grade']) {
+                $(`[name="${name}"]`).closest('label').hidden = !graded;
+                $(`[name="${name}"]`).required = graded;
+            }
+            $('[name="qty"]').readOnly = graded;
+            if (graded) $('[name="qty"]').value = '1';
+            $('[name="cert"]').maxLength = $('[name="grading"]').value === 'PSA' ? 12 : 80;
+        };
+        $('[name="cardType"]').onchange = updateGrading;
         $('[name="grading"]').onchange = updateGrading;
         updateGrading();
     }
     if (kind === 'sell')
-        $('#fields').innerHTML = `<p class="wide">${esc(c.name)} · ${remaining(state, c)} available</p>` + input('qty', 'Quantity sold', 1, 'number', `required min="1" max="${remaining(state, c)}" step="1"`) + input('total', 'Sold for — total ($)', '', 'number', 'required min="0" step="0.01"') + input('fees', 'Fees + seller shipping ($)', 0, 'number', 'required min="0" step="0.01"') + input('date', 'Sale date', today(), 'date', 'required');
+        $('#fields').innerHTML = `<p class="wide">${esc(c.name)} · ${remaining(state, c)} available<br>Purchase: ${esc(c.purchaseDate) || 'Date not recorded'} · ${money(c.cost)} per card · ${esc(c.grading)} ${esc(c.cert)}</p>` + input('qty', 'Quantity sold', 1, 'number', `required min="1" max="${remaining(state, c)}" step="1"`) + input('total', 'Sold for — total ($)', '', 'number', 'required min="0" step="0.01"') + input('fees', 'Fees + seller shipping ($)', 0, 'number', 'required min="0" step="0.01"') + input('date', 'Sale date', today(), 'date', 'required');
     if (kind === 'show')
-        $('#fields').innerHTML = `<p class="wide">${esc(c.name)} · ${remaining(state, c)} available</p>` + input('showQty', 'Quantity to bring', c.showQty || 1, 'number', `required min="0" max="${remaining(state, c)}" step="1"`) + '<small class="wide">Use zero to remove this card from the list. Adding it does not change inventory or profit.</small>';
+        $('#fields').innerHTML = `<p class="wide">${esc(c.name)} · ${remaining(state, c)} available<br>Purchase: ${esc(c.purchaseDate) || 'Date not recorded'} · ${money(c.cost)} per card · ${esc(c.grading)} ${esc(c.cert)}</p>` + input('showQty', 'Quantity to bring', c.showQty || 1, 'number', `required min="0" max="${remaining(state, c)}" step="1"`) + '<small class="wide">Use zero to remove this card from the list. Adding it does not change inventory or profit.</small>';
     if (kind === 'expense')
         $('#fields').innerHTML = input('name', 'Expense description', '', 'text', 'required maxlength="120"') + `<label>Category<select name="category"><option>Show / table fees</option><option>Supplies</option><option>Travel</option><option>Subscriptions</option><option>Other</option></select></label>` + input('amount', 'Amount ($)', '', 'number', 'required min="0.01" step="0.01"') + input('date', 'Date', today(), 'date', 'required') + '<small class="wide">Do not enter card purchase costs or selling fees here if already included in a card or sale.</small>';
     if (kind === 'sell') {
@@ -157,13 +163,14 @@ $('#form').onsubmit = async e => {
     e.preventDefault();
     try {
         const d = Object.fromEntries(new FormData(e.target)), next = structuredClone(state);
+        if (mode === 'card' || mode === 'edit') d.grading = d.cardType === 'Raw' ? 'Raw' : d.grading;
         if (mode === 'card' || mode === 'edit') {
             const old = next.cards.find(x => x.id === id);
             if (!d.name.trim())
                 throw Error('Enter a card name.');
             if (d.grading === 'PSA' && (!/^\d{6,12}$/.test(d.cert) || Number(d.qty) !== 1 || !d.grade.trim()))
-                throw Error('PSA slabs need a grade, a 6–12 digit cert, and quantity 1. Add each cert separately.');
-            const c = { id: id || uid(), name: d.name.trim(), details: d.details.trim(), grading: d.grading, grade: d.grading === 'PSA' ? d.grade.trim() : '', cert: d.grading === 'PSA' ? d.cert : '', qty: Number(d.qty), cost: cents(d.cost), purchaseDate: d.purchaseDate, notes: d.notes.trim() };
+                throw Error('PSA slabs need a grade, a 6–12 digit cert, and quantity 1. Add each purchase separately.');
+            const c = { id: id || uid(), name: d.name.trim(), details: d.details.trim(), grading: d.grading, grade: d.grading !== 'Raw' ? d.grade.trim() : '', cert: d.grading !== 'Raw' ? d.cert.trim() : '', qty: Number(d.qty), cost: cents(d.cost), purchaseDate: d.purchaseDate, notes: d.notes.trim() };
             if (old && next.sales.some(s => s.cardId === id) && (old.cost !== c.cost || old.qty !== c.qty || old.cert !== c.cert || old.grading !== c.grading))
                 throw Error('This card has sales. Undo those sales before changing quantity, cost, or cert.');
             if (old) {
