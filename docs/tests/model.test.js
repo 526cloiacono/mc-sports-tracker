@@ -2,7 +2,19 @@ import {test} from 'node:test';import assert from 'node:assert/strict';import {a
 const data=()=>({version:1,cards:[{id:'a',name:'Card',details:'2026',grading:'Raw',grade:'',cert:'',qty:3,cost:1000}],sales:[],expenses:[]});
 test('partial sale uses sold cost only and subtracts fees and expenses',()=>{const s=data();addSale(s,'a',2,3600,200,'2026-10-26');s.expenses.push({id:'e',name:'Table',category:'Show',amount:300,date:'2026-10-26'});assert.equal(totals(s).profit,1100);assert.equal(totals(s).inventory,1000);assert.equal(remaining(s,s.cards[0]),1);validate(s);});
 test('overselling and invalid values are rejected',()=>{const s=data();assert.throws(()=>addSale(s,'a',4,5000,0,''));assert.throws(()=>addSale(s,'a',1,-1,0,''));assert.throws(()=>addSale(s,'a',1.5,1000,0,''));});
-test('duplicate PSA certs rejected and leading zeros retained',()=>{const s=data();s.cards=[{...s.cards[0],grading:'PSA',grade:'10',cert:'00123456',qty:1}];validate(s);s.cards.push({...s.cards[0],id:'b'});assert.throws(()=>validate(s));});
+test('same cert can have purchases at different dates and costs; sales use the selected purchase',()=>{
+ const s=data();s.cards=[{...s.cards[0],grading:'PSA',grade:'10',cert:'00123456',qty:1,purchaseDate:'2026-10-01'}, {...s.cards[0],id:'b',grading:'PSA',grade:'10',cert:'00123456',qty:1,cost:1500,purchaseDate:'2026-11-01'}];
+ validate(s);addSale(s,'a',1,2000,100,'2026-10-20');validate(s);
+ assert.equal(s.sales[0].cost,1000);assert.equal(totals(s).profit,900);assert.equal(totals(s).inventory,1500);
+ assert.deepEqual(selectCards(s,{query:'00123456'}).map(c=>[c.id,c.purchaseDate,c.cost]),[['b','2026-11-01',1500],['a','2026-10-01',1000]]);
+ assert.equal(validate(JSON.parse(JSON.stringify(s))).cards[0].cert,'00123456');
+ addSale(s,'b',1,2500,100,'2026-11-03');assert.equal(s.sales[1].cost,1500);
+});
+test('raw and graded filters accept PSA SGC and Other while preserving old PSA records',()=>{
+ const s=data();for(const grading of ['PSA','SGC','Other']) s.cards.push({...s.cards[0],id:grading,grading,cert:grading==='PSA'?'00123456':'AB-001',grade:'9',qty:1});
+ validate(s);assert.equal(selectCards(s,{grading:'Graded'}).length,3);assert.equal(selectCards(s,{grading:'Raw'}).length,1);assert.equal(selectCards(s,{grading:'SGC'})[0].id,'SGC');
+ s.cards[2].qty=2;assert.throws(()=>validate(s));s.cards[2].qty=1;s.cards[2].cert='';assert.throws(()=>validate(s));
+});
 test('undo sale restores inventory and profit',()=>{const s=data();addSale(s,'a',1,1500,100,'2026-10-26');s.sales=[];assert.equal(totals(s).profit,0);assert.equal(totals(s).quantity,3);});
 import {periodTotals} from '../model.js';
 test('period profit includes only dated sales and expenses, including boundary days',()=>{const s=data();addSale(s,'a',1,2000,100,'2026-10-01');addSale(s,'a',1,2500,100,'2026-11-01');s.expenses.push({id:'fee',name:'table',category:'show',date:'2026-10-31',amount:200});assert.equal(periodTotals(s,'2026-10-01','2026-10-31').profit,700);assert.equal(periodTotals(s,'2026-12-01','2026-12-31').profit,0);});
