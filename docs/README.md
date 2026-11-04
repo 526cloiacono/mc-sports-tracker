@@ -1,10 +1,10 @@
 # MC Sports — HTML, CSS & JavaScript
 
-The working MC Sports card inventory and profit tracker, extracted into a simple static website. No framework, build step, paid API, or npm dependencies are required.
+The working MC Sports card inventory and profit tracker, extracted into a simple static website. The website includes a pinned Supabase browser SDK and uses private account-based cloud storage. No frontend build step is needed to host the committed files.
 
 ## Start in VS Code
 
-1. Extract this ZIP and open the `mc-sports-code` folder in VS Code.
+1. Clone this repository and open its `docs` folder in VS Code.
 2. Serve the folder using the Live Server extension, or run `python -m http.server 8000` in this folder and open http://localhost:8000.
 3. Use the site in your browser. Do not open index.html by double-clicking: the JavaScript uses ES modules, which need an HTTP server.
 
@@ -43,11 +43,15 @@ To host on GitHub Pages, choose Settings → Pages → Deploy from a branch → 
 
 ## Data and hosting
 
-Records save only in your current browser using localStorage key `cardledger-v1`. Export backups regularly. Moving to a new address, browser, or device does not automatically move your records: export JSON from the old site and restore it on the new one.
+Sign up on the website, confirm your email, then sign in. Records save to your private Supabase account. On other devices, sign in to the same account; use Refresh cloud records to load newer changes. Saves check a revision number and reject conflicting updates. An internet connection is required; failed saves are not queued offline.
 
-The files can be served by a static website host. Hosting this code does not publish your existing local browser records, but this is not a cloud database or an account-based app. There is no cross-device sync or login in this standalone version.
+Existing `cardledger-v1` browser records remain untouched. Use Import browser records on the original device/address, or Restore a JSON backup from another address. Both replace the cloud collection after confirmation, so export the cloud collection first if needed.
 
-PSA automatic lookup is paused. Certs and grades are manual. No API token is included, and no PSA requests are made. Do not put credentials in HTML, JavaScript, or Git.
+The default Supabase email service only sends to organization team addresses. Use your Supabase organization email for initial signup. Configure custom SMTP before opening signup to the public. Email confirmation remains enabled. See `docs/CLOUD-SETUP.md` (or `CLOUD-SETUP.md` when viewing docs/) for configuration details.
+
+The publishable Supabase key is intentionally public and database access is restricted by row-level security. Never commit secret or service-role keys.
+
+PSA automatic lookup is paused. Certs and grades are manual. No PSA API token is included, and no PSA requests are made. Do not put credentials in HTML, JavaScript, or Git.
 
 ## New in version 1.1
 
