@@ -9,3 +9,5 @@ button:disabled{cursor:not-allowed;opacity:.45;transform:none}.panel-buttons{dis
 
 
 .cloud-panel{margin:24px 0;padding:22px;border:1px solid #cddbeb;border-radius:14px;background:#f4f8fd}.cloud-panel form,.cloud-actions{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.cloud-panel label{display:grid;gap:6px}.cloud-panel input{padding:10px;border:1px solid #bacbdd;border-radius:8px}.cloud-panel p{font-size:14px}.cloud-panel [hidden]{display:none}button:disabled{opacity:.5;cursor:not-allowed}@media print{.cloud-panel{display:none}}
+
+.signup-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px}.signup-fields label{display:grid;gap:7px;font-size:14px}.signup-fields .wide{grid-column:1/-1}.signup-fields input{width:100%;box-sizing:border-box;padding:12px;border:1px solid #bacbdd;border-radius:8px;font:inherit}.signup-fields small{color:#536478}#signup-error{color:#a42736;min-height:1.4em}#signup-dialog{max-height:90dvh;overflow:auto}#signup-submit{width:100%}#workspace-name{display:block;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:inherit}@media(max-width:520px){.signup-fields{grid-template-columns:1fr}}

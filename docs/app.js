@@ -10,11 +10,22 @@ function lock() {
     $('#refresh-cloud').disabled = busy || !account;
     $('#signout').disabled = busy;
 }
+function showWorkspace(user) {
+    const metadata = user?.user_metadata || {};
+    const names = [metadata.first_name, metadata.last_name].filter(v => typeof v === 'string' && v.trim()).map(v => v.trim());
+    const fullName = names.join(' ') || (typeof metadata.full_name === 'string' ? metadata.full_name.trim() : '');
+    const label = user ? fullName || user.email || 'Your account' : 'Guest';
+    $('#workspace-name').textContent = label;
+    $('#workspace-name').title = label;
+    $('#workspace-label').textContent = user ? 'Personal workspace' : 'Sign in to your workspace';
+    $('#workspace-initials').textContent = user ? (names.length ? names.map(n => Array.from(n)[0]).join('') : Array.from(label)[0]).toUpperCase() : '?';
+    $('#account-name').textContent = user ? `${label}’s workspace` : 'Sign in to save your collection across devices';
+}
 async function loadAccount(user) {
     const token = ++generation;
     account = user; ready = false; revision = null; state = fresh();
     $('#modal').close(); $('#print-sheet').innerHTML=''; render(); lock();
-    $('#account-name').textContent = user ? user.email : 'Sign in to save your collection across devices';
+    showWorkspace(user);
     $('#auth-form').hidden = !!user;
     $('#signout').hidden = !user;
     if (!user) { $('#cloud-status').textContent='Signed out'; return; }
@@ -276,13 +287,48 @@ $('#auth-form').onsubmit=async e=> {
     try {
         let result;
         if(action==='reset') result=await client.auth.resetPasswordForEmail(email,{redirectTo});
-        else if(action==='signup') result=await client.auth.signUp({email,password,options:{emailRedirectTo:redirectTo}});
         else result=await client.auth.signInWithPassword({email,password});
         if(result.error) throw result.error;
         $('#password').value='';
-        $('#auth-message').textContent=action==='signup' ? 'Check your email to confirm your account.' : action==='reset' ? 'If eligible, a password reset link has been sent.' : '';
+        $('#auth-message').textContent=action==='reset' ? 'If eligible, a password reset link has been sent.' : '';
     } catch(e) { $('#auth-message').textContent=e.message; }
     finally { buttons.forEach(b=>b.disabled=false); }
+};
+let signupPending = false;
+$('#open-signup').onclick = () => {
+    $('#signup-error').textContent = '';
+    $('#signup-form').reset();
+    $('#signup-confirm').setCustomValidity('');
+    $('#signup-form').elements.email.value = $('#email').value.trim();
+    $('#signup-dialog').showModal();
+};
+$('#close-signup').onclick = () => { if (!signupPending) $('#signup-dialog').close(); };
+$('#signup-dialog').addEventListener('cancel', e => { if(signupPending) e.preventDefault(); });
+$('#signup-dialog').addEventListener('close', () => {
+    $('#signup-password').value = ''; $('#signup-confirm').value = '';
+});
+const checkPasswords = () => $('#signup-confirm').setCustomValidity(
+    $('#signup-confirm').value && $('#signup-password').value !== $('#signup-confirm').value ? 'Passwords must match.' : '');
+$('#signup-password').oninput = $('#signup-confirm').oninput = checkPasswords;
+$('#signup-form').onsubmit = async e => {
+    e.preventDefault();
+    if(signupPending) return;
+    checkPasswords();
+    if(!e.target.reportValidity()) return;
+    const d = Object.fromEntries(new FormData(e.target));
+    const firstName = d.firstName.trim(), lastName = d.lastName.trim();
+    if(!firstName || !lastName) { $('#signup-error').textContent='Enter your first and last name.'; return; }
+    signupPending=true;
+    $('#signup-submit').disabled=$('#close-signup').disabled=true;
+    $('#signup-error').textContent='Creating your account…';
+    try {
+        const {data,error} = await client.auth.signUp({email:d.email.trim(), password:d.password, options:{emailRedirectTo:redirectTo, data:{first_name:firstName,last_name:lastName,full_name:`${firstName} ${lastName}`}}});
+        if(error) throw error;
+        $('#email').value=d.email.trim();
+        $('#auth-message').textContent=data.session ? 'Account created. Welcome!' : 'Check your email to confirm your account, then sign in.';
+        $('#signup-dialog').close();
+    } catch(e) { $('#signup-error').textContent=e.message || 'Could not create your account. Please try again.'; }
+    finally { signupPending=false; $('#signup-submit').disabled=$('#close-signup').disabled=false; }
 };
 $('#password-form').onsubmit=async e=> {
     e.preventDefault();
@@ -291,6 +337,7 @@ $('#password-form').onsubmit=async e=> {
     if(!error) { $('#new-password').value=''; $('#password-dialog').close(); }
 };
 client.auth.onAuthStateChange((event,session)=> {
+    if(event==='USER_UPDATED') { account=session?.user || null; showWorkspace(account); }
     if(event==='PASSWORD_RECOVERY') $('#password-dialog').showModal();
     if(event==='INITIAL_SESSION' || event==='SIGNED_OUT' || (event==='SIGNED_IN' && session?.user.id !== account?.id))
         setTimeout(()=>loadAccount(session?.user || null),0);
