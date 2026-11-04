@@ -1,31 +1,54 @@
 import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, setShowQuantity, showTotals, selectCards, saleInsights } from './model.js';
 const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [] });
-let state = fresh(), tab = 'inventory', mode, id, recoveryRequired = false;
-try {
-    const saved = localStorage.getItem(key);
-    if (saved)
-        state = validate(JSON.parse(saved));
+let state = fresh(), tab = 'inventory', mode, id;
+let account = null, revision = null, ready = false, busy = false, generation = 0;
+import { client, loadPortfolio, writePortfolio } from './cloud.js';
+function lock() {
+    const blocked = !ready || busy;
+    for (const selector of ['#add','#restore','#import-local','#clear-show','#content button','#form button[type="submit"]'])
+        document.querySelectorAll(selector).forEach(b => b.disabled = blocked);
+    $('#refresh-cloud').disabled = busy || !account;
+    $('#signout').disabled = busy;
 }
-catch (e) {
-    recoveryRequired = true;
-    $('#notice').textContent = 'Saved data could not be loaded. Restore a valid backup before making changes.';
+async function loadAccount(user) {
+    const token = ++generation;
+    account = user; ready = false; revision = null; state = fresh();
+    $('#modal').close(); $('#print-sheet').innerHTML=''; render(); lock();
+    $('#account-name').textContent = user ? user.email : 'Sign in to save your collection across devices';
+    $('#auth-form').hidden = !!user;
+    $('#signout').hidden = !user;
+    if (!user) { $('#cloud-status').textContent='Signed out'; return; }
+    $('#cloud-status').textContent='Loading cloud records…';
+    try {
+        const row = await loadPortfolio(user.id);
+        if(token !== generation) return;
+        state = row ? validate(row.data) : fresh(); revision = row?.revision ?? null; ready = true;
+        $('#cloud-status').textContent='Connected · records are private to your account';
+        render();
+    } catch(e) { if(token === generation) $('#cloud-status').textContent='Could not load cloud records: '+e.message; }
+    finally { if(token === generation) lock(); }
 }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => (n / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const today = () => new Date().toLocaleDateString('en-CA');
-function save(next, restoring = false) {
-    if (recoveryRequired && !restoring) throw Error('Restore a valid backup before saving. Your original browser data has not been overwritten.');
-    validate(next); try {
-    localStorage.setItem(key, JSON.stringify(next));
-    state = next;
-    recoveryRequired = false;
-    render();
-    $('#notice').textContent = 'Changes saved.';
+async function save(next) {
+    if(!ready || !account || busy) throw Error('Sign in and wait for cloud records to load before saving.');
+    validate(next); busy = true; lock();
+    const token = generation, userId=account.id;
+    $('#cloud-status').textContent='Saving to cloud…';
+    try {
+        const nextRevision = await writePortfolio(userId, revision, next);
+        if(token !== generation) throw Error('Account changed. Reload records to check this save.');
+        revision = nextRevision; state = next; render();
+        $('#cloud-status').textContent='Saved to cloud';
+        $('#notice').textContent='Changes saved to your account.';
+    } catch(e) {
+        if(token === generation) { ready=false; $('#cloud-status').textContent='Save not confirmed · refresh cloud records before editing again'; }
+        throw e;
+    } finally { busy = false; lock(); }
 }
-catch (e) {
-    throw Error('Could not save. Your browser storage may be full or unavailable. Export a backup.');
-} }
 function render() {
+    queueMicrotask(lock);
     const from = $('#from').value, to = $('#to').value;
     if (from && to && from > to) {
         $('#period-error').textContent = 'From date must be before To date.';
@@ -95,6 +118,7 @@ function render() {
 }
 const input = (name, label, value = '', type = 'text', extra = '') => `<label>${label}<input name="${name}" value="${esc(value)}" type="${type}" ${extra}></label>`;
 function open(kind, recordId) {
+    if(!ready || busy) return;
     mode = kind;
     id = recordId;
     $('#error').textContent = '';
@@ -129,7 +153,7 @@ function open(kind, recordId) {
     }
     $('#modal').showModal();
 }
-$('#form').onsubmit = e => {
+$('#form').onsubmit = async e => {
     e.preventDefault();
     try {
         const d = Object.fromEntries(new FormData(e.target)), next = structuredClone(state);
@@ -157,24 +181,24 @@ $('#form').onsubmit = e => {
                 throw Error('Enter a description.');
             next.expenses.push({ id: uid(), name: d.name.trim(), category: d.category, amount: cents(d.amount), date: d.date });
         }
-        save(next);
+        await save(next);
         $('#modal').close();
     }
     catch (e) {
         $('#error').textContent = e.message;
     }
 };
-$('#content').onclick = e => { const b = e.target.closest('[data-action]'); if (!b)
+$('#content').onclick = async e => { const b = e.target.closest('[data-action]'); if (!b)
     return; const { action, id } = b.dataset; if (action === 'sell' || action === 'edit' || action === 'show')
     return open(action, id); const n = structuredClone(state);
-    if (action === 'unpack') { try { setShowQuantity(n, id, 0); save(n); } catch (e) { alert(e.message); } return; }
+    if (action === 'unpack') { try { setShowQuantity(n, id, 0); await save(n); } catch (e) { alert(e.message); } return; }
     if (action === 'remove' && n.sales.some(s => s.cardId === id))
     return alert('This card has recorded sales. Undo its sales first to remove it, so your profit history stays accurate.'); if (!confirm(action === 'undo' ? 'Undo this sale and return its quantity to inventory?' : 'Remove this record? Export a backup first if you may need it later.'))
     return; if (action === 'remove')
     n.cards = n.cards.filter(x => x.id !== id); if (action === 'undo')
     n.sales = n.sales.filter(x => x.id !== id); if (action === 'deleteExpense')
     n.expenses = n.expenses.filter(x => x.id !== id); try {
-    save(n);
+    await save(n);
 }
 catch (e) {
     alert(e.message);
@@ -198,18 +222,18 @@ $('#file').onchange = async (e) => { try {
         return;
     const n = validate(JSON.parse(await file.text()));
     if (confirm('Replace your current records with this backup? Export your current data first if needed.'))
-        save(n, true);
+        await save(n);
 }
 catch (e) {
     alert(e.message);
 } e.target.value = ''; };
 $('#csv').onclick = () => { const data = tab === 'show' ? selectCards(state, { showOnly: true, sort: 'name' }).map(c => ({ name: c.name, details: c.details, grading: c.grading, grade: c.grade, cert: c.cert, quantityToBring: c.showQty, costPerCardCents: c.cost, packedCostCents: c.cost * c.showQty })) : tab === 'inventory' ? state.cards.map(c => ({ ...c, remaining: remaining(state, c) })) : state[tab]; if (!data.length)
     return alert('No records to export.'); const fields = [...new Set(data.flatMap(r => Object.keys(r)))].filter(k => k !== 'ask'), cell = v => '"' + String(v ?? '').replace(/^[=+@-]/, "'$&").replaceAll('"', '""') + '"'; download([fields.map(cell).join(','), ...data.map(r => fields.map(k => cell(r[k])).join(','))].join('\r\n'), 'mc-sports-' + tab + '-cents.csv', 'text/csv'); $('#notice').textContent = 'CSV exported. Monetary fields are in cents.'; };
-$('#clear-show').onclick = () => {
+$('#clear-show').onclick = async () => {
     if (!confirm('Clear your show list? Your inventory and sales will stay unchanged.')) return;
     const next = structuredClone(state);
     next.cards.forEach(c => { c.showQty = 0; });
-    try { save(next); } catch (e) { alert(e.message); }
+    try { await save(next); } catch (e) { alert(e.message); }
 };
 $('#print-show').onclick = () => {
     const cards = selectCards(state, { showOnly: true, sort: 'name' }), total = showTotals(state);
@@ -219,3 +243,49 @@ $('#print-show').onclick = () => {
 };
 render();
 
+
+
+$('#refresh-cloud').onclick=()=> { if(!busy) loadAccount(account); };
+$('#signout').onclick=async()=> {
+    if(busy) return;
+    const {error}=await client.auth.signOut();
+    if(error) $('#cloud-status').textContent=error.message;
+};
+$('#import-local').onclick=async()=> {
+    try {
+        const saved=localStorage.getItem(key);
+        if(!saved) throw Error('No older browser records found on this device. You can also Restore a JSON backup.');
+        const data=validate(JSON.parse(saved));
+        if(!confirm('Replace your cloud collection with the records on this browser? Download a backup of your cloud records first. The browser copy will be kept.')) return;
+        await save(data);
+    } catch(e) { $('#notice').textContent=e.message; }
+};
+const redirectTo = 'https://526cloiacono.github.io/mc-sports-tracker/';
+$('#auth-form').onsubmit=async e=> {
+    e.preventDefault();
+    const action=e.submitter?.value || 'login', email=$('#email').value.trim(), password=$('#password').value;
+    $('#auth-message').textContent='Please wait…';
+    const buttons=[...$('#auth-form').querySelectorAll('button')]; buttons.forEach(b=>b.disabled=true);
+    try {
+        let result;
+        if(action==='reset') result=await client.auth.resetPasswordForEmail(email,{redirectTo});
+        else if(action==='signup') result=await client.auth.signUp({email,password,options:{emailRedirectTo:redirectTo}});
+        else result=await client.auth.signInWithPassword({email,password});
+        if(result.error) throw result.error;
+        $('#password').value='';
+        $('#auth-message').textContent=action==='signup' ? 'Check your email to confirm your account.' : action==='reset' ? 'If eligible, a password reset link has been sent.' : '';
+    } catch(e) { $('#auth-message').textContent=e.message; }
+    finally { buttons.forEach(b=>b.disabled=false); }
+};
+$('#password-form').onsubmit=async e=> {
+    e.preventDefault();
+    const {error}=await client.auth.updateUser({password:$('#new-password').value});
+    $('#password-message').textContent=error ? error.message : 'Password updated.';
+    if(!error) { $('#new-password').value=''; $('#password-dialog').close(); }
+};
+client.auth.onAuthStateChange((event,session)=> {
+    if(event==='PASSWORD_RECOVERY') $('#password-dialog').showModal();
+    if(event==='INITIAL_SESSION' || event==='SIGNED_OUT' || (event==='SIGNED_IN' && session?.user.id !== account?.id))
+        setTimeout(()=>loadAccount(session?.user || null),0);
+});
+lock();
