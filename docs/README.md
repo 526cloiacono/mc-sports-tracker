@@ -66,3 +66,7 @@ PSA automatic lookup is paused. Certs and grades are manual. No PSA API token is
 
 To update, export a backup first, then replace the code files while keeping the same site address/server port. If you move addresses, restore that backup on the new site.
 
+
+
+## Shows and calendar
+The Shows tab now stores events (name, location, local date/time, and notes) instead of packing quantities. Calendar displays the same shows by month; click an event to edit it. Shows save in the account portfolio and JSON backups. Existing backups without shows remain valid. Legacy packing quantities are retained only for backup compatibility and are no longer shown in the app. Inventory cert searches respect the selected stock filter and show matching card quantities.

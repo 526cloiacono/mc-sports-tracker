@@ -7,7 +7,12 @@ export function addSale(s, cardId, qty, total, fees, date) { const c = s.cards.f
     throw Error('Enter valid nonnegative amounts.'); s.sales.push({ id: uid(), cardId, qty, total, fees, cost: qty * c.cost, date, name: c.name, details: c.details, cert: c.cert });
     if (c.showQty !== undefined) c.showQty = Math.min(c.showQty, remaining(s, c)); }
 export function validate(s) { if (!s || s.version !== 1 || !['cards', 'sales', 'expenses'].every(k => Array.isArray(s[k])))
-    throw Error('Invalid MC Sports backup.'); const ids = new Set(); for (const x of [...s.cards, ...s.sales, ...s.expenses]) {
+    throw Error('Invalid MC Sports backup.');
+    if (s.shows !== undefined && !Array.isArray(s.shows)) throw Error('Invalid shows.');
+    for (const show of s.shows || []) {
+        if (!show || typeof show.id !== 'string' || typeof show.name !== 'string' || !show.name.trim() || typeof show.location !== 'string' || !show.location.trim() || !validShowDate(show.date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(show.time) || typeof show.notes !== 'string') throw Error('Enter a show name, location, valid date and time.');
+    }
+    const ids = new Set(); for (const x of [...s.cards, ...s.sales, ...s.expenses, ...(s.shows || [])]) {
     if (typeof x.id !== 'string' || ids.has(x.id))
         throw Error('Invalid record ID.');
     ids.add(x.id);
@@ -56,7 +61,7 @@ export function selectCards(s, { query = '', grading = 'all', status = 'availabl
     const cards = s.cards.filter(c => {
         const available = remaining(s, c);
         return (!showOnly || c.showQty > 0)
-            && (showOnly || certSearch || status === 'all' || (status === 'sold' ? available === 0 : available > 0))
+            && (showOnly || status === 'all' || (status === 'sold' ? available === 0 : available > 0))
             && (grading === 'all' || (grading === 'Graded' && c.grading !== 'Raw') || c.grading === grading)
             && `${c.name} ${c.details} ${c.cert} ${c.notes || ''}`.toLowerCase().includes(q);
     });
@@ -80,3 +85,12 @@ export function saleInsights(s, from = '', to = '') {
 }
 
 
+
+export function validShowDate(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const d = new Date(value + 'T12:00:00');
+    return !Number.isNaN(d.getTime()) && d.getFullYear() === Number(value.slice(0,4)) && d.getMonth()+1 === Number(value.slice(5,7)) && d.getDate() === Number(value.slice(8,10));
+}
+export function matchingCardQuantity(s, cards, status = 'available') {
+    return cards.reduce((n,c)=>n+(status === 'sold' ? c.qty - remaining(s,c) : remaining(s,c)),0);
+}

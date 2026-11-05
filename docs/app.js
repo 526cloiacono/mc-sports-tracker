@@ -1,11 +1,12 @@
-import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, setShowQuantity, showTotals, selectCards, saleInsights, isCertSearch } from './model.js';
-const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [] });
+import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity } from './model.js';
+const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [], shows: [] });
 let state = fresh(), tab = 'inventory', mode, id;
+let calendarMonth = new Date(new Date().getFullYear(),new Date().getMonth(),1);
 let account = null, revision = null, ready = false, busy = false, generation = 0;
 import { client, loadPortfolio, writePortfolio } from './cloud.js';
 function lock() {
     const blocked = !ready || busy;
-    for (const selector of ['#add','#restore','#import-local','#clear-show','#content button','#form button[type="submit"]'])
+    for (const selector of ['#add','#restore','#import-local','#clear-show','#calendar-view .calendar-event','#content button','#form button[type="submit"]'])
         document.querySelectorAll(selector).forEach(b => b.disabled = blocked);
     $('#refresh-cloud').disabled = busy || !account;
     $('#signout').disabled = busy;
@@ -72,14 +73,16 @@ async function save(next) {
 function render() {
     queueMicrotask(lock);
     const from = $('#from').value, to = $('#to').value;
-    if (from && to && from > to) {
+    if (tab !== 'show' && tab !== 'calendar' && from && to && from > to) {
         $('#period-error').textContent = 'From date must be before To date.';
         return;
     }
     $('#period-error').textContent = '';
     const all = totals(state), period = periodTotals(state, from, to);
-    const insights = saleInsights(state, from, to), packed = showTotals(state);
-    const isCards = tab === 'inventory' || tab === 'show';
+    const insights = saleInsights(state, from, to);
+    const isCards = tab === 'inventory';
+    const isEvents = tab === 'show' || tab === 'calendar';
+    for (const selector of ['.heading','.report-controls','#stats','#sales-summary','#insights','.formula']) $(selector).hidden = isEvents;
     $('#sales-summary').innerHTML = `<span>Sales revenue <b>${money(period.revenue)}</b></span><span>Sold card costs <b>${money(period.cost)}</b></span><span>Selling fees <b>${money(period.fees)}</b></span><span>${from || to ? 'Selected period' : 'All time'} · inventory shown at current cost</span>`;
     $('#stats').innerHTML = [
         ['Net profit', money(period.profit), 'After cost, fees & expenses'],
@@ -88,18 +91,19 @@ function render() {
         ['Business expenses', money(period.expenses), 'Excludes card costs & selling fees']
     ].map((x, i) => `<div class="stat"><label>${x[0]}</label><strong class="${i === 0 ? (period.profit < 0 ? 'negative' : 'positive') : ''}">${x[1]}</strong><small>${x[2]}</small></div>`).join('');
     $('#insights').innerHTML = `<span><b>${insights.transactions}</b> ${insights.transactions === 1 ? 'sale' : 'sales'} recorded</span><span><b>${insights.quantity}</b> cards sold</span><span><b>${insights.quantity ? money(insights.averageProfit) : '—'}</b> average profit / sold card <small>before business expenses</small></span>`;
-    $('#crumb').textContent = tab === 'show' ? 'SHOW LIST' : tab.toUpperCase();
-    $('#section-title').textContent = { inventory: 'Your inventory', show: 'Ready for the next show', sales: 'Sales history', expenses: 'Business expenses' }[tab];
-    $('#section-sub').textContent = { inventory: 'A home for every card in your collection.', show: 'Choose your cards. Pack your case. Make your next sale.', sales: 'Every sale, with its true profit.', expenses: 'Table fees, supplies, travel, and more.' }[tab];
-    $('#add').textContent = tab === 'expenses' ? '＋ Add expense' : tab === 'show' ? '＋ Choose cards' : '＋ Add card';
+    $('#crumb').textContent = tab === 'show' ? 'SHOWS' : tab.toUpperCase();
+    $('#section-title').textContent = { inventory: 'Your inventory', show: 'Your shows', calendar: 'Show calendar', sales: 'Sales history', expenses: 'Business expenses' }[tab];
+    $('#section-sub').textContent = { inventory: 'A home for every card in your collection.', show: 'Plan your next show and keep the details together.', calendar: 'Every show, on your calendar.', sales: 'Every sale, with its true profit.', expenses: 'Table fees, supplies, travel, and more.' }[tab];
+    $('#add').textContent = tab === 'expenses' ? '＋ Add expense' : isEvents ? '＋ Add show' : '＋ Add card';
     $('#add').hidden = tab === 'sales';
     $('#filter').hidden = !isCards;
     $('#sort').hidden = !isCards;
     $('#status-filter').hidden = tab !== 'inventory';
-    $('#show-summary').hidden = tab !== 'show';
-    $('#print-show').hidden = $('#clear-show').hidden = tab !== 'show';
-    $('#print-show').disabled = $('#clear-show').disabled = packed.quantity === 0;
-    $('#show-summary').innerHTML = `<span><b>${packed.quantity}</b> ${packed.quantity === 1 ? 'card' : 'cards'} to bring</span><span><b>${money(packed.cost)}</b> total cost</span><small>Sales automatically cap packed quantities at remaining stock. No asking prices.</small>`;
+    $('#show-summary').hidden = $('#print-show').hidden = $('#clear-show').hidden = true;
+    $('#calendar-view').hidden = tab !== 'calendar';
+    $('#content').hidden = tab === 'calendar';
+    $('#search').hidden = tab === 'calendar';
+    $('#search').placeholder = tab === 'show' ? 'Search shows, locations or notes…' : 'Search player, set, card # or cert…';
     document.querySelectorAll('nav button').forEach(button => {
         button.classList.toggle('active', button.dataset.tab === tab);
         button.setAttribute('aria-pressed', String(button.dataset.tab === tab));
@@ -108,16 +112,16 @@ function render() {
     let rows = '', heads = [], count = 0;
     if (isCards) {
         const cards = selectCards(state, { query: q, grading, status: $('#status-filter').value,
-            sort: $('#sort').value, showOnly: tab === 'show' });
+            sort: $('#sort').value });
         count = cards.length;
-        heads = ['Card / player', 'Grade / cert', 'Purchased', tab === 'show' ? 'Bringing / available' : 'Owned', 'Cost / card', 'Actions'];
+        heads = ['Card / player', 'Grade / cert', 'Purchased', 'Owned', 'Cost / card', 'Actions'];
         rows = cards.map(c => {
             const available = remaining(state, c);
             const owned = state.cards.filter(x => x.name.toLowerCase() === c.name.toLowerCase() && x.details.toLowerCase() === c.details.toLowerCase() && x.grading === c.grading && x.grade === c.grade).reduce((n, x) => n + remaining(state, x), 0);
-            return `<tr><td><b>${esc(c.name)}</b><small>${esc(c.details) || 'No set details'}</small>${c.notes ? `<small>${esc(c.notes)}</small>` : ''}${c.showQty > 0 && tab !== 'show' ? `<span class="show-badge">${c.showQty} on show list</span>` : ''}</td>
+            return `<tr><td><b>${esc(c.name)}</b><small>${esc(c.details) || 'No set details'}</small>${c.notes ? `<small>${esc(c.notes)}</small>` : ''}</td>
                 <td><span class="badge">${esc(c.grading)} ${esc(c.grade)}</span><small>${c.cert ? '#' + esc(c.cert) : 'Ungraded'}</small></td>
-                <td>${esc(c.purchaseDate) || 'Date not recorded'}<small>${c.qty} purchased in this entry</small></td><td><b>${tab === 'show' ? `${c.showQty} / ${available}` : available}</b><small>${owned} matching in collection</small></td><td>${money(c.cost)}</td>
-                <td class="actions">${available > 0 ? `<button data-action="sell" data-id="${esc(c.id)}">Sell</button><button data-action="show" data-id="${esc(c.id)}">${c.showQty > 0 ? 'Adjust show qty' : 'Bring to show'}</button>` : '<span class="sold-badge">Sold out</span>'}${tab === 'show' ? `<button data-action="unpack" data-id="${esc(c.id)}">Take off list</button>` : `<button data-action="edit" data-id="${esc(c.id)}">Edit</button><button data-action="remove" data-id="${esc(c.id)}">Remove</button>`}</td></tr>`;
+                <td>${esc(c.purchaseDate) || 'Date not recorded'}<small>${c.qty} purchased in this entry</small></td><td><b>${available}</b><small>${owned} matching in collection</small></td><td>${money(c.cost)}</td>
+                <td class="actions">${available > 0 ? `<button data-action="sell" data-id="${esc(c.id)}">Sell</button>` : '<span class="sold-badge">Sold out</span>'}<button data-action="edit" data-id="${esc(c.id)}">Edit</button><button data-action="remove" data-id="${esc(c.id)}">Remove</button></td></tr>`;
         }).join('');
     }
     if (tab === 'sales') {
@@ -132,12 +136,36 @@ function render() {
         count = expenses.length;
         rows = expenses.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.category)}</td><td>${esc(x.date)}</td><td>${money(x.amount)}</td><td><button data-action="deleteExpense" data-id="${esc(x.id)}">Remove</button></td></tr>`).join('');
     }
-    $('#result-count').textContent = `${count} ${count === 1 ? 'record' : 'records'} shown · ${tab === 'inventory' && isCertSearch(state,q) ? 'Cert search includes sold purchases · ' : ''} ${tab === 'show' ? 'Print and export include your entire show list.' : 'CSV exports all records, regardless of filters.'}`;
+    if (tab === 'show') {
+        const shows = (state.shows || []).filter(x => `${x.name} ${x.location} ${x.notes}`.toLowerCase().includes(q)).slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+        count = shows.length;
+        heads = ['Show', 'Location', 'Date', 'Time', 'Notes', 'Actions'];
+        rows = shows.map(x=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.location)}</td><td>${esc(x.date)}</td><td>${esc(x.time)}</td><td class="show-notes">${esc(x.notes)}</td><td><button data-action="editShow" data-id="${esc(x.id)}">Edit</button><button data-action="deleteShow" data-id="${esc(x.id)}">Remove</button></td></tr>`).join('');
+    }
+    if (tab === 'calendar') { renderCalendar(); count = (state.shows || []).filter(x=>x.date.startsWith(`${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth()+1).padStart(2,'0')}`)).length; }
+    const matching = isCards ? selectCards(state,{query:q,grading,status:$('#status-filter').value}) : [];
+    $('#result-count').textContent = `${count} ${isEvents ? (count === 1 ? 'show' : 'shows') : (count === 1 ? 'record' : 'records')} shown` + (isCards && q ? ` · ${matchingCardQuantity(state,matching,$('#status-filter').value)} ${$('#status-filter').value === 'sold' ? 'sold' : 'available'} cards in this search` : '');
     const filtered = q || (isCards && grading !== 'all') || (tab === 'inventory' && $('#status-filter').value !== 'available');
-    const emptyTitle = filtered ? 'No matching records' : tab === 'show' ? 'Build your show lineup.' : tab === 'inventory' ? 'Your next flip starts here.' : 'No records yet.';
-    const emptyBody = filtered ? 'Try another search or change your filters.' : tab === 'show' ? 'Choose cards from inventory and select Bring to show. Set the quantity you plan to pack.' : tab === 'inventory' ? 'Add your first card to start tracking your collection and profit.' : 'Your records will appear here as you add them.';
+    const emptyTitle = filtered ? 'No matching records' : tab === 'show' ? 'Plan your next show.' : tab === 'inventory' ? 'Your next flip starts here.' : 'No records yet.';
+    const emptyBody = filtered ? 'Try another search or change your filters.' : tab === 'show' ? 'Add a show with its location, date, time, and notes. It will appear on your calendar.' : tab === 'inventory' ? 'Add your first card to start tracking your collection and profit.' : 'Your records will appear here as you add them.';
     $('#content').innerHTML = rows ? `<table><thead><tr>${heads.map(x => `<th scope="col">${x}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><b>${emptyTitle}</b>${emptyBody}</div>`;
 }
+function renderCalendar() {
+    const year=calendarMonth.getFullYear(), month=calendarMonth.getMonth();
+    const start=new Date(year,month,1).getDay(), days=new Date(year,month+1,0).getDate();
+    const dateKey=day=>`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    let cells=Array.from({length:start},()=>'<div class="calendar-day blank" aria-hidden="true"></div>').join('');
+    for(let day=1;day<=days;day++) {
+        const date=dateKey(day), shows=(state.shows || []).filter(x=>x.date===date).slice().sort((a,b)=>a.time.localeCompare(b.time));
+        cells+=`<div class="calendar-day ${date===today()?'today':''}"><time datetime="${date}">${day}</time>${shows.map(x=>`<button class="calendar-event" data-action="editShow" data-id="${esc(x.id)}" title="${esc(x.location)}"><b>${esc(x.time)} · ${esc(x.name)}</b><small>${esc(x.location)}</small></button>`).join('')}</div>`;
+    }
+    $('#calendar-view').innerHTML=`<div class="calendar-toolbar"><button data-month="-1" aria-label="Previous month">←</button><h3>${calendarMonth.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</h3><button data-month="1" aria-label="Next month">→</button><button data-month="today">Today</button></div><div class="calendar-grid">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="weekday">${d}</div>`).join('')}${cells}</div>`;
+}
+$('#calendar-view').onclick=e=> {
+    const month=e.target.closest('[data-month]');
+    if(month) { calendarMonth=month.dataset.month==='today' ? new Date(new Date().getFullYear(),new Date().getMonth(),1) : new Date(calendarMonth.getFullYear(),calendarMonth.getMonth()+Number(month.dataset.month),1); render();return; }
+    const event=e.target.closest('[data-action="editShow"]');if(event) open('editShow',event.dataset.id);
+};
 const input = (name, label, value = '', type = 'text', extra = '') => `<label>${label}<input name="${name}" value="${esc(value)}" type="${type}" ${extra}></label>`;
 function open(kind, recordId) {
     if(!ready || busy) return;
@@ -145,7 +173,7 @@ function open(kind, recordId) {
     id = recordId;
     $('#error').textContent = '';
     let c = state.cards.find(x => x.id === id);
-    $('#modal-title').textContent = { card: 'Add a card', edit: 'Edit card', sell: 'Record a sale', expense: 'Add expense', show: 'Bring to a show' }[kind];
+    $('#modal-title').textContent = { card: 'Add a card', edit: 'Edit card', sell: 'Record a sale', expense: 'Add expense', showEvent: 'Add show', editShow: 'Edit show' }[kind];
     if (kind === 'card' || kind === 'edit') {
         $('#fields').innerHTML = `<label>Card type<select name="cardType"><option value="Raw">Raw</option><option value="Graded" ${c && c.grading !== 'Raw' ? 'selected' : ''}>Graded</option></select></label><label>Grading company<select name="grading">${['PSA','SGC','Other'].map(g=>`<option ${c?.grading===g?'selected':''}>${g}</option>`).join('')}</select></label>` + input('cert', 'Cert number', c?.cert || '', 'text', 'maxlength="80"') + input('name', 'Player / card name', c?.name || '', 'text', 'required maxlength="120"') + input('details', 'Year, set, card #, parallel', c?.details || '', 'text', 'maxlength="200"') + input('grade', 'Grade', c?.grade || '', 'text', 'maxlength="30"') + input('qty', 'Quantity purchased', c?.qty || 1, 'number', 'required min="1" step="1"') + input('cost', 'Cost per card ($)', c ? c.cost / 100 : '', 'number', 'required min="0" step="0.01"') + input('purchaseDate', 'Purchase date', c?.purchaseDate || (c ? '' : today()), 'date', c ? '' : 'required') + input('notes', 'Notes', c?.notes || '', 'text', 'maxlength="500"') + '<small class="wide">Each entry is a separate purchase with its own date and cost. You can reuse a cert for another purchase. Add graded slabs one at a time; record sales against the purchase you are selling.</small>';
         const updateGrading = () => {
@@ -164,8 +192,10 @@ function open(kind, recordId) {
     }
     if (kind === 'sell')
         $('#fields').innerHTML = `<p class="wide">${esc(c.name)} · ${remaining(state, c)} available<br>Purchase: ${esc(c.purchaseDate) || 'Date not recorded'} · ${money(c.cost)} per card · ${esc(c.grading)} ${esc(c.cert)}</p>` + input('qty', 'Quantity sold', 1, 'number', `required min="1" max="${remaining(state, c)}" step="1"`) + input('total', 'Sold for — total ($)', '', 'number', 'required min="0" step="0.01"') + input('fees', 'Fees + seller shipping ($)', 0, 'number', 'required min="0" step="0.01"') + input('date', 'Sale date', today(), 'date', 'required');
-    if (kind === 'show')
-        $('#fields').innerHTML = `<p class="wide">${esc(c.name)} · ${remaining(state, c)} available<br>Purchase: ${esc(c.purchaseDate) || 'Date not recorded'} · ${money(c.cost)} per card · ${esc(c.grading)} ${esc(c.cert)}</p>` + input('showQty', 'Quantity to bring', c.showQty || 1, 'number', `required min="0" max="${remaining(state, c)}" step="1"`) + '<small class="wide">Use zero to remove this card from the list. Adding it does not change inventory or profit.</small>';
+    if (kind === 'showEvent' || kind === 'editShow') {
+        const show = (state.shows || []).find(x=>x.id===id);
+        $('#fields').innerHTML = input('name','Show name',show?.name || '', 'text','required maxlength="120"') + input('location','Location',show?.location || '', 'text','required maxlength="200"') + input('date','Date',show?.date || today(),'date','required') + input('time','Time',show?.time || '09:00','time','required') + `<label class="wide">Notes<textarea name="notes" rows="4" maxlength="2000">${esc(show?.notes || '')}</textarea></label>`;
+    }
     if (kind === 'expense')
         $('#fields').innerHTML = input('name', 'Expense description', '', 'text', 'required maxlength="120"') + `<label>Category<select name="category"><option>Show / table fees</option><option>Supplies</option><option>Travel</option><option>Subscriptions</option><option>Other</option></select></label>` + input('amount', 'Amount ($)', '', 'number', 'required min="0.01" step="0.01"') + input('date', 'Date', today(), 'date', 'required') + '<small class="wide">Do not enter card purchase costs or selling fees here if already included in a card or sale.</small>';
     if (kind === 'sell') {
@@ -202,7 +232,11 @@ $('#form').onsubmit = async e => {
             else
                 next.cards.push(c);
         }
-        if (mode === 'show') setShowQuantity(next, id, Number(d.showQty));
+        if (mode === 'showEvent' || mode === 'editShow') {
+            const show = {id: id || uid(),name:d.name.trim(),location:d.location.trim(),date:d.date,time:d.time,notes:d.notes.trim()};
+            next.shows ||= [];
+            if (mode === 'editShow') Object.assign(next.shows.find(x=>x.id===id),show); else next.shows.push(show);
+        }
         if (mode === 'sell')
             addSale(next, id, Number(d.qty), cents(d.total), cents(d.fees), d.date);
         if (mode === 'expense') {
@@ -218,12 +252,11 @@ $('#form').onsubmit = async e => {
     }
 };
 $('#content').onclick = async e => { const b = e.target.closest('[data-action]'); if (!b)
-    return; const { action, id } = b.dataset; if (action === 'sell' || action === 'edit' || action === 'show')
+    return; const { action, id } = b.dataset; if (action === 'sell' || action === 'edit' || action === 'editShow')
     return open(action, id); const n = structuredClone(state);
-    if (action === 'unpack') { try { setShowQuantity(n, id, 0); await save(n); } catch (e) { alert(e.message); } return; }
     if (action === 'remove' && n.sales.some(s => s.cardId === id))
     return alert('This card has recorded sales. Undo its sales first to remove it, so your profit history stays accurate.'); if (!confirm(action === 'undo' ? 'Undo this sale and return its quantity to inventory?' : 'Remove this record? Export a backup first if you may need it later.'))
-    return; if (action === 'remove')
+    return; if(action === 'deleteShow') n.shows = (n.shows || []).filter(x=>x.id!==id); if (action === 'remove')
     n.cards = n.cards.filter(x => x.id !== id); if (action === 'undo')
     n.sales = n.sales.filter(x => x.id !== id); if (action === 'deleteExpense')
     n.expenses = n.expenses.filter(x => x.id !== id); try {
@@ -232,7 +265,7 @@ $('#content').onclick = async e => { const b = e.target.closest('[data-action]')
 catch (e) {
     alert(e.message);
 } };
-$('#add').onclick = () => { if (tab === 'show') { tab = 'inventory'; $('#search').value = ''; $('#filter').value = 'all'; $('#status-filter').value = 'available'; render(); } else open(tab === 'expenses' ? 'expense' : 'card'); };
+$('#add').onclick = () => open(tab === 'show' || tab === 'calendar' ? 'showEvent' : tab === 'expenses' ? 'expense' : 'card');
 $('#close').onclick = () => $('#modal').close();
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; $('#search').value = ''; render(); });
 $('#from').onchange = render;
@@ -256,20 +289,8 @@ $('#file').onchange = async (e) => { try {
 catch (e) {
     alert(e.message);
 } e.target.value = ''; };
-$('#csv').onclick = () => { const data = tab === 'show' ? selectCards(state, { showOnly: true, sort: 'name' }).map(c => ({ name: c.name, details: c.details, grading: c.grading, grade: c.grade, cert: c.cert, quantityToBring: c.showQty, costPerCardCents: c.cost, packedCostCents: c.cost * c.showQty })) : tab === 'inventory' ? state.cards.map(c => ({ ...c, remaining: remaining(state, c) })) : state[tab]; if (!data.length)
+$('#csv').onclick = () => { const data = tab === 'show' || tab === 'calendar' ? state.shows || [] : tab === 'inventory' ? state.cards.map(c=>({...c,remaining:remaining(state,c)})) : state[tab]; if (!data.length)
     return alert('No records to export.'); const fields = [...new Set(data.flatMap(r => Object.keys(r)))].filter(k => k !== 'ask'), cell = v => '"' + String(v ?? '').replace(/^[=+@-]/, "'$&").replaceAll('"', '""') + '"'; download([fields.map(cell).join(','), ...data.map(r => fields.map(k => cell(r[k])).join(','))].join('\r\n'), 'mc-sports-' + tab + '-cents.csv', 'text/csv'); $('#notice').textContent = 'CSV exported. Monetary fields are in cents.'; };
-$('#clear-show').onclick = async () => {
-    if (!confirm('Clear your show list? Your inventory and sales will stay unchanged.')) return;
-    const next = structuredClone(state);
-    next.cards.forEach(c => { c.showQty = 0; });
-    try { await save(next); } catch (e) { alert(e.message); }
-};
-$('#print-show').onclick = () => {
-    const cards = selectCards(state, { showOnly: true, sort: 'name' }), total = showTotals(state);
-    if (!cards.length) return;
-    $('#print-sheet').innerHTML = `<h1>MC Sports · Show checklist</h1><p>${esc(today())} · ${total.quantity} cards · ${money(total.cost)} at cost</p><p>Show / location: _________________________</p><table><thead><tr><th>Packed</th><th>Card / details</th><th>Grade / cert</th><th>Qty</th><th>Unit cost</th></tr></thead><tbody>${cards.map(c => `<tr><td>☐</td><td>${esc(c.name)}<small>${esc(c.details)}</small></td><td>${esc(c.grading)} ${esc(c.grade)}<small>${esc(c.cert)}</small></td><td>${c.showQty}</td><td>${money(c.cost)}</td></tr>`).join('')}</tbody></table><p>Costs are for your reference. This checklist is not a price list.</p>`;
-    window.print();
-};
 render();
 
 
