@@ -311,11 +311,14 @@ $('#auth-form').onsubmit=async e=> {
     finally { submit.disabled=false; }
 };
 let resetPending=false;
-$('#open-reset').onclick=()=> {
+function openPasswordReset() {
     $('#signin-dialog').close();
-    $('#reset-form').reset(); $('#reset-email').value=$('#email').value.trim();
+    $('#reset-form').reset(); $('#reset-email').value=account?.email || $('#email').value.trim();
+    $('#reset-email').readOnly=!!account;
     $('#reset-message').textContent=''; $('#reset-dialog').showModal();
 };
+$('#open-reset').onclick=openPasswordReset;
+$('#account-reset').onclick=openPasswordReset;
 $('#close-reset').onclick=()=> { if(!resetPending) $('#reset-dialog').close(); };
 $('#reset-dialog').addEventListener('cancel',e=>{if(resetPending)e.preventDefault();});
 $('#reset-form').onsubmit=async e=>{
