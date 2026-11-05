@@ -59,13 +59,18 @@ export function renderProfitChart(host,state,from='',to=''){
         plot.querySelector('#chart-tip-profit').textContent=money(p.value);
         plot.querySelector('#chart-tip-change').textContent=p.opening?'Opening balance':`${p.delta>0?'+':''}${money(p.delta)} daily change`;
         range.value=index; range.setAttribute('aria-valuetext',`${dateLabel(p.date)}: ${money(p.value)} cumulative profit`);
-        const line=plot.querySelector('#chart-crosshair');line.setAttribute('x1',x(p));line.setAttribute('x2',x(p));line.setAttribute('y1',T);line.setAttribute('y2',H-B);
-        const dot=plot.querySelector('#chart-dot');dot.setAttribute('cx',x(p));dot.setAttribute('cy',y(p.value));dot.setAttribute('fill',p.delta<0?'#d55063':p.delta>0?'#15976c':'#617392');
+        const line=plot.querySelector('#chart-crosshair');line.setAttribute('visibility',showTip?'visible':'hidden');line.setAttribute('x1',x(p));line.setAttribute('x2',x(p));line.setAttribute('y1',T);line.setAttribute('y2',H-B);
+        const dot=plot.querySelector('#chart-dot');dot.setAttribute('visibility',showTip?'visible':'hidden');dot.setAttribute('cx',x(p));dot.setAttribute('cy',y(p.value));dot.setAttribute('fill',p.delta<0?'#d55063':p.delta>0?'#15976c':'#617392');
     };
-    range.oninput=()=>inspect(Number(range.value));
+    const hideInspection=()=>{
+        for(const selector of ['#chart-tooltip','#chart-crosshair','#chart-dot'])plot.querySelector(selector).setAttribute('visibility','hidden');
+    };
+    range.oninput=()=>inspect(Number(range.value),false);
     let activePointer=null;
     const inspectPointer=e=>{
-        const rect=svg.getBoundingClientRect(),px=(e.clientX-rect.left)/rect.width*W;
+        const rect=svg.getBoundingClientRect();
+        if(e.clientX<rect.left || e.clientX>rect.right || e.clientY<rect.top || e.clientY>rect.bottom){hideInspection();return;}
+        const px=(e.clientX-rect.left)/rect.width*W;
         let nearest=0;
         points.forEach((p,i)=>{if(Math.abs(x(p)-px)<Math.abs(x(points[nearest])-px))nearest=i;});
         inspect(nearest);
@@ -81,7 +86,9 @@ export function renderProfitChart(host,state,from='',to=''){
         if(svg.hasPointerCapture(e.pointerId))svg.releasePointerCapture(e.pointerId);
         activePointer=null;svg.classList.remove('is-dragging');
     };
-    svg.onpointerup=finishDrag;svg.onpointercancel=finishDrag;
+    svg.onpointerup=e=>{finishDrag(e);const rect=svg.getBoundingClientRect();if(e.pointerType!=='mouse' || e.clientX<rect.left || e.clientX>rect.right || e.clientY<rect.top || e.clientY>rect.bottom)hideInspection();};
+    svg.onpointercancel=e=>{finishDrag(e);hideInspection();};
+    svg.onpointerleave=hideInspection;
     svg.onlostpointercapture=()=>{activePointer=null;svg.classList.remove('is-dragging');};
     inspect(points.length-1,false);
 }

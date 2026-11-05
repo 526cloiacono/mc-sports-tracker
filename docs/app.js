@@ -1,4 +1,4 @@
-import {renderProfitChart} from './profit-chart.js?v=20261105-drag1';
+import {renderProfitChart} from './profit-chart.js?v=20261105-hover1';
 import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity } from './model.js';
 const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [], shows: [] });
 let state = fresh(), tab = 'home', mode, id;
@@ -44,7 +44,8 @@ async function loadAccount(user) {
     $('#auth-form').hidden = !!user;
     $('#auth-entry').hidden = !!user;
     $('#open-login').hidden = !!user;
-    document.querySelector('main > .cloud-panel').hidden = !user;
+    $('#account-panel').hidden = !user;
+    if (!user) $('#account-dialog').close();
     if (user) {
         $('#signin-dialog').close();
         $('#signup-dialog').close();
@@ -335,6 +336,8 @@ $('#import-local').onclick=async()=> {
         await save(data);
     } catch(e) { $('#notice').textContent=e.message; }
 };
+$('#open-account').onclick=()=> account ? $('#account-dialog').showModal() : $('#signin-dialog').showModal();
+$('#close-account').onclick=()=>$('#account-dialog').close();
 $('#open-login').onclick=()=> { if(!account && !$('#signin-dialog').open) $('#signin-dialog').showModal(); };
 $('#close-login').onclick=()=>$('#signin-dialog').close();
 $('#signin-dialog').addEventListener('close',()=> { $('#password').value=''; });
@@ -358,6 +361,7 @@ $('#auth-form').onsubmit=async e=> {
 };
 let resetPending=false;
 function openPasswordReset() {
+    $('#account-dialog').close();
     $('#signin-dialog').close();
     $('#reset-form').reset(); $('#reset-email').value=account?.email || $('#email').value.trim();
     $('#reset-email').readOnly=!!account;
