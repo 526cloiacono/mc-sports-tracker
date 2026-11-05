@@ -28,3 +28,12 @@ main>.cloud-panel .auth-intro h2{font-size:20px;margin:0 0 5px}
 header>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 
 #fields textarea{display:block;width:100%;margin-top:7px;padding:11px;font:inherit;border:1px solid var(--line);border-radius:8px;resize:vertical}.show-notes{white-space:pre-wrap;min-width:180px;max-width:340px}#calendar-view{padding:0 20px 24px;overflow:auto}.calendar-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:18px}.calendar-toolbar h3{margin:0 auto 0 0;font-size:20px}.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(100px,1fr));min-width:700px;border-left:1px solid var(--line);border-top:1px solid var(--line)}.weekday,.calendar-day{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:10px}.weekday{font-size:11px;font-weight:700;color:var(--muted);text-align:center;background:#f5f7fb}.calendar-day{min-height:120px;background:white}.calendar-day time{font-size:12px;font-weight:700}.calendar-day.today{background:#edf3ff}.calendar-day.blank{background:#f8fafc}.calendar-event{display:block;width:100%;margin-top:7px;text-align:left;padding:8px;background:#e8efff;color:#294b9a;border:1px solid #cfdbf7;white-space:normal;overflow-wrap:anywhere;font-size:11px}.calendar-event small{display:block;margin-top:5px}nav{gap:15px}@media(max-width:650px){nav button{font-size:10px}.calendar-toolbar{flex-wrap:wrap}#calendar-view{padding-inline:10px}}
+
+/* Make the current page clear in the main navigation. */
+nav{gap:8px}
+nav button{align-self:center;min-height:42px;padding:0 14px;border:1px solid transparent;border-bottom:3px solid transparent;border-radius:8px;color:#b7c3d8;font-weight:600;transition:background .15s,color .15s,border-color .15s}
+nav button:hover{background:#ffffff0d;color:#fff}
+nav button.active,nav button.active:hover{background:#3158b7;color:#fff;border-color:#5076ce;border-bottom-color:#a9c6ff;box-shadow:0 3px 12px #0002;font-weight:800}
+nav button:focus-visible{outline:2px solid #b9d0ff;outline-offset:3px}
+@media(max-width:900px){nav{gap:4px}nav button{padding-inline:10px}}
+@media(max-width:560px){nav{height:52px;gap:3px}nav button{font-size:10px;padding-inline:5px;min-height:38px;min-width:0}}
