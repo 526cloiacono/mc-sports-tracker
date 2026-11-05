@@ -19,7 +19,7 @@ function showWorkspace(user) {
     $('#workspace-name').title = label;
     $('#workspace-label').textContent = user ? 'Personal workspace' : 'Sign in to your workspace';
     $('#workspace-initials').textContent = user ? (names.length ? names.map(n => Array.from(n)[0]).join('') : Array.from(label)[0]).toUpperCase() : '?';
-    $('#account-name').textContent = user ? `${label}’s workspace` : 'Sign in to save your collection across devices';
+    $('#account-name').textContent = user ? `${label}’s workspace` : 'Welcome back.';
 }
 async function loadAccount(user) {
     const token = ++generation;
@@ -27,6 +27,9 @@ async function loadAccount(user) {
     $('#modal').close(); $('#print-sheet').innerHTML=''; render(); lock();
     showWorkspace(user);
     $('#auth-form').hidden = !!user;
+    $('#auth-entry').hidden = !!user;
+    $('#auth-description').hidden = !!user;
+    $('#cloud-actions').hidden = !user;
     $('#signout').hidden = !user;
     if (!user) { $('#cloud-status').textContent='Signed out'; return; }
     $('#cloud-status').textContent='Loading cloud records…';
@@ -281,18 +284,33 @@ $('#import-local').onclick=async()=> {
 const redirectTo = 'https://526cloiacono.github.io/mc-sports-tracker/';
 $('#auth-form').onsubmit=async e=> {
     e.preventDefault();
-    const action=e.submitter?.value || 'login', email=$('#email').value.trim(), password=$('#password').value;
-    $('#auth-message').textContent='Please wait…';
-    const buttons=[...$('#auth-form').querySelectorAll('button')]; buttons.forEach(b=>b.disabled=true);
+    const submit=$('#auth-form button[type="submit"]') || $('#auth-form .signin-submit');
+    if(submit.disabled) return;
+    submit.disabled=true; $('#auth-message').textContent='Signing in…';
     try {
-        let result;
-        if(action==='reset') result=await client.auth.resetPasswordForEmail(email,{redirectTo});
-        else result=await client.auth.signInWithPassword({email,password});
-        if(result.error) throw result.error;
-        $('#password').value='';
-        $('#auth-message').textContent=action==='reset' ? 'If eligible, a password reset link has been sent.' : '';
+        const {error}=await client.auth.signInWithPassword({email:$('#email').value.trim().toLowerCase(),password:$('#password').value});
+        if(error) throw error;
+        $('#password').value=''; $('#auth-message').textContent='';
     } catch(e) { $('#auth-message').textContent=e.message; }
-    finally { buttons.forEach(b=>b.disabled=false); }
+    finally { submit.disabled=false; }
+};
+let resetPending=false;
+$('#open-reset').onclick=()=> {
+    $('#reset-form').reset(); $('#reset-email').value=$('#email').value.trim();
+    $('#reset-message').textContent=''; $('#reset-dialog').showModal();
+};
+$('#close-reset').onclick=()=> { if(!resetPending) $('#reset-dialog').close(); };
+$('#reset-dialog').addEventListener('cancel',e=>{if(resetPending)e.preventDefault();});
+$('#reset-form').onsubmit=async e=>{
+    e.preventDefault(); if(resetPending)return;
+    resetPending=true; $('#reset-submit').disabled=$('#close-reset').disabled=true;
+    $('#reset-message').textContent='Sending reset link…';
+    try {
+        const {error}=await client.auth.resetPasswordForEmail($('#reset-email').value.trim().toLowerCase(),{redirectTo});
+        if(error)throw error;
+        $('#reset-message').textContent='If an account uses this email, you’ll receive a reset link. Check your inbox and spam folder.';
+    } catch(e){$('#reset-message').textContent=e.message;}
+    finally{resetPending=false;$('#reset-submit').disabled=$('#close-reset').disabled=false;}
 };
 let signupPending = false;
 $('#open-signup').onclick = () => {
@@ -322,9 +340,11 @@ $('#signup-form').onsubmit = async e => {
     $('#signup-submit').disabled=$('#close-signup').disabled=true;
     $('#signup-error').textContent='Creating your account…';
     try {
-        const {data,error} = await client.auth.signUp({email:d.email.trim(), password:d.password, options:{emailRedirectTo:redirectTo, data:{first_name:firstName,last_name:lastName,full_name:`${firstName} ${lastName}`}}});
+        const {data,error} = await client.auth.signUp({email:d.email.trim().toLowerCase(), password:d.password, options:{emailRedirectTo:redirectTo, data:{first_name:firstName,last_name:lastName,full_name:`${firstName} ${lastName}`}}});
+        if(error && (['user_already_exists','email_exists'].includes(error.code) || /already (?:been )?registered|already exists/i.test(error.message))) throw Error('An account already exists with this email. Sign in or reset your password.');
         if(error) throw error;
-        $('#email').value=d.email.trim();
+        if(data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) throw Error('An account already exists with this email. Sign in or reset your password.');
+        $('#email').value=d.email.trim().toLowerCase();
         $('#auth-message').textContent=data.session ? 'Account created. Welcome!' : 'Check your email to confirm your account, then sign in.';
         $('#signup-dialog').close();
     } catch(e) { $('#signup-error').textContent=e.message || 'Could not create your account. Please try again.'; }
