@@ -6,7 +6,7 @@ test('same cert can have purchases at different dates and costs; sales use the s
  const s=data();s.cards=[{...s.cards[0],grading:'PSA',grade:'10',cert:'00123456',qty:1,purchaseDate:'2026-10-01'}, {...s.cards[0],id:'b',grading:'PSA',grade:'10',cert:'00123456',qty:1,cost:1500,purchaseDate:'2026-11-01'}];
  validate(s);addSale(s,'a',1,2000,100,'2026-10-20');validate(s);
  assert.equal(s.sales[0].cost,1000);assert.equal(totals(s).profit,900);assert.equal(totals(s).inventory,1500);
- assert.deepEqual(selectCards(s,{query:'00123456'}).map(c=>[c.id,c.purchaseDate,c.cost]),[['b','2026-11-01',1500],['a','2026-10-01',1000]]);
+ assert.deepEqual(selectCards(s,{query:'00123456'}).map(c=>[c.id,c.purchaseDate,c.cost]),[['b','2026-11-01',1500]]);
  assert.equal(validate(JSON.parse(JSON.stringify(s))).cards[0].cert,'00123456');
  addSale(s,'b',1,2500,100,'2026-11-03');assert.equal(s.sales[1].cost,1500);
 });
@@ -54,3 +54,18 @@ test('sale insights weight per-card profit by sold quantity within selected date
  assert.equal(saleInsights(s,'2027-01-01','2027-01-31').averageProfit,0);
 });
 
+
+import {matchingCardQuantity} from '../model.js';
+test('cert searches respect stock filter and count copies',()=>{
+ const s=data();s.cards[0].cert='12345678';s.cards.push({...s.cards[0],id:'b',qty:2});addSale(s,'a',3,5000,0,'2026-11-05');
+ assert.deepEqual(selectCards(s,{query:'12345678'}).map(c=>c.id),['b']);
+ const sold=selectCards(s,{query:'12345678',status:'sold'});assert.deepEqual(sold.map(c=>c.id),['a']);assert.equal(matchingCardQuantity(s,sold,'sold'),3);
+ assert.equal(matchingCardQuantity(s,selectCards(s,{query:'12345678'})),2);
+ assert.equal(selectCards(s,{query:'12345678',status:'all'}).length,2);
+});
+test('shows persist independently of inventory and old backups remain valid',()=>{
+ const s=data();validate(s);s.shows=[{id:'show1',name:'Marlboro show',location:'Community center',date:'2026-11-22',time:'07:00',notes:'Setup early'}];
+ const restored=validate(JSON.parse(JSON.stringify(s)));assert.deepEqual(restored.shows,s.shows);assert.equal(totals(restored).quantity,3);
+ for(const value of ['2026-02-30','bad','2026-13-01']){const bad=structuredClone(s);bad.shows[0].date=value;assert.throws(()=>validate(bad));}
+ const bad=structuredClone(s);bad.shows[0].time='25:00';assert.throws(()=>validate(bad));bad.shows[0].time='09:00';bad.shows[0].id='a';assert.throws(()=>validate(bad));
+});
