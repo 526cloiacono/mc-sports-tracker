@@ -29,7 +29,7 @@ const time=d=>Date.parse(d+'T12:00:00Z');
 export function renderProfitChart(host,state,from='',to=''){
     const {points,undated}=profitSeries(state,from,to);
     const total=points.at(-1)?.value || 0;
-    host.innerHTML=`<div class="profit-chart-head"><div><p class="panel-kicker">THE BIGGER PICTURE</p><h2 id="profit-chart-title">Profit over time</h2><p class="chart-sub">Cumulative net profit · ${from||to?'Selected period':'All time'} · Starts at $0</p></div><div class="chart-total ${total<0?'negative':'positive'}">${money(total)}<small>Sales profit minus expenses</small></div></div><div class="chart-legend"><span class="up">Rising profit</span><span class="down">Falling profit</span></div><div id="profit-plot"></div><div class="chart-inspector" ${points.length?'':'hidden'}><p id="chart-reading" role="status" aria-live="polite"></p><label for="profit-point">Explore timeline</label><input id="profit-point" type="range" min="0" max="${Math.max(0,points.length-1)}" value="${Math.max(0,points.length-1)}" step="1"></div><p class="chart-note">Includes sold-card costs, selling fees, and business expenses. Unsold inventory is excluded.${undated?' Undated records are not plotted.':''}</p>`;
+    host.innerHTML=`<div class="profit-chart-head"><div><p class="panel-kicker">THE BIGGER PICTURE</p><h2 id="profit-chart-title">Profit over time</h2><p class="chart-sub">Cumulative net profit · ${from||to?'Selected period':'All time'} · Starts at $0</p></div><div class="chart-total ${total<0?'negative':'positive'}">${money(total)}<small>Sales profit minus expenses</small></div></div><div class="chart-legend"><span class="up">Rising profit</span><span class="down">Falling profit</span></div><div id="profit-plot"></div><div class="chart-inspector" ${points.length?'':'hidden'}><p id="chart-reading" role="status" aria-live="polite"></p><label for="profit-point">Drag the chart or explore timeline</label><input id="profit-point" type="range" min="0" max="${Math.max(0,points.length-1)}" value="${Math.max(0,points.length-1)}" step="1"></div><p class="chart-note">Includes sold-card costs, selling fees, and business expenses. Unsold inventory is excluded.${undated?' Undated records are not plotted.':''}</p>`;
     const plot=host.querySelector('#profit-plot');
     if(!points.length){plot.innerHTML='<div class="chart-empty"><svg viewBox="0 0 800 130" aria-hidden="true"><path d="M0 95H800M0 55H800M0 15H800" stroke="#e6ebf3"/><path d="M0 95H800" stroke="#a8b5cc" stroke-width="2" stroke-dasharray="5 7"/></svg><b>Your profit story starts with your first transaction.</b><p>Record a sale or expense to see your chart here.</p></div>';return;}
     const W=1000,H=270,L=78,R=24,T=22,B=38, width=W-L-R,height=H-T-B;
@@ -46,17 +46,42 @@ export function renderProfitChart(host,state,from='',to=''){
     }
     const labels=[0,Math.floor((points.length-1)/2),points.length-1].filter((v,i,a)=>a.indexOf(v)===i);
     labels.forEach(i=>{const p=points[i];markup+=`<text x="${x(p)}" y="${H-10}" text-anchor="${i===0?'start':i===points.length-1?'end':'middle'}" class="chart-axis">${dateLabel(p.date)}</text>`;});
-    markup+='<line id="chart-crosshair" stroke="#617392" stroke-dasharray="3 4"/><circle id="chart-dot" r="5" fill="#4265dc" stroke="white" stroke-width="3"/>';
-    plot.innerHTML=`<svg id="profit-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative net profit: ${money(total)}. Green segments rise; red segments fall. Use Explore timeline below for date and value details.">${markup}</svg>`;
+    markup+='<line id="chart-crosshair" stroke="#617392" stroke-dasharray="3 4"/><circle id="chart-dot" r="5" fill="#4265dc" stroke="white" stroke-width="3"/><g id="chart-tooltip" pointer-events="none" visibility="hidden"><rect width="182" height="74" rx="9" fill="#182e50" stroke="#47628c"/><text id="chart-tip-date" x="12" y="19" fill="#b4c6e1" font-size="10"></text><text id="chart-tip-profit" x="12" y="42" fill="white" font-size="18" font-weight="700"></text><text id="chart-tip-change" x="12" y="60" fill="#b4c6e1" font-size="10"></text></g>';
+    plot.innerHTML=`<svg id="profit-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative net profit: ${money(total)}. Green segments rise; red segments fall. Drag across the line or use Explore timeline below for date and value details.">${markup}</svg>`;
     const range=host.querySelector('#profit-point'),svg=plot.querySelector('svg');
-    const inspect=index=>{
+    const inspect=(index,showTip=true)=>{
         const p=points[index];
         host.querySelector('#chart-reading').textContent=`${dateLabel(p.date)} · ${p.opening?'Opening balance':money(p.value)+' cumulative'} · ${p.opening?'$0.00':(p.delta>0?'+':'')+money(p.delta)+' daily change'}`;
+        const tooltip=plot.querySelector('#chart-tooltip');
+        tooltip.setAttribute('visibility',showTip?'visible':'hidden');
+        tooltip.setAttribute('transform',`translate(${Math.max(L,Math.min(W-R-182,x(p)-91))},${y(p.value)>110?Math.max(T,y(p.value)-90):Math.min(H-B-74,y(p.value)+16)})`);
+        plot.querySelector('#chart-tip-date').textContent=dateLabel(p.date);
+        plot.querySelector('#chart-tip-profit').textContent=money(p.value);
+        plot.querySelector('#chart-tip-change').textContent=p.opening?'Opening balance':`${p.delta>0?'+':''}${money(p.delta)} daily change`;
         range.value=index; range.setAttribute('aria-valuetext',`${dateLabel(p.date)}: ${money(p.value)} cumulative profit`);
         const line=plot.querySelector('#chart-crosshair');line.setAttribute('x1',x(p));line.setAttribute('x2',x(p));line.setAttribute('y1',T);line.setAttribute('y2',H-B);
         const dot=plot.querySelector('#chart-dot');dot.setAttribute('cx',x(p));dot.setAttribute('cy',y(p.value));dot.setAttribute('fill',p.delta<0?'#d55063':p.delta>0?'#15976c':'#617392');
     };
     range.oninput=()=>inspect(Number(range.value));
-    svg.onpointermove=e=>{const rect=svg.getBoundingClientRect(), px=(e.clientX-rect.left)/rect.width*W;let nearest=0;points.forEach((p,i)=>{if(Math.abs(x(p)-px)<Math.abs(x(points[nearest])-px))nearest=i;});inspect(nearest);};
-    inspect(points.length-1);
+    let activePointer=null;
+    const inspectPointer=e=>{
+        const rect=svg.getBoundingClientRect(),px=(e.clientX-rect.left)/rect.width*W;
+        let nearest=0;
+        points.forEach((p,i)=>{if(Math.abs(x(p)-px)<Math.abs(x(points[nearest])-px))nearest=i;});
+        inspect(nearest);
+    };
+    svg.onpointerdown=e=>{
+        if(!e.isPrimary || e.button!==0)return;
+        activePointer=e.pointerId;svg.setPointerCapture(e.pointerId);
+        svg.classList.add('is-dragging');inspectPointer(e);e.preventDefault();
+    };
+    svg.onpointermove=e=>{if(e.pointerId===activePointer || (activePointer===null && e.pointerType==='mouse'))inspectPointer(e);};
+    const finishDrag=e=>{
+        if(e.pointerId!==activePointer)return;
+        if(svg.hasPointerCapture(e.pointerId))svg.releasePointerCapture(e.pointerId);
+        activePointer=null;svg.classList.remove('is-dragging');
+    };
+    svg.onpointerup=finishDrag;svg.onpointercancel=finishDrag;
+    svg.onlostpointercapture=()=>{activePointer=null;svg.classList.remove('is-dragging');};
+    inspect(points.length-1,false);
 }

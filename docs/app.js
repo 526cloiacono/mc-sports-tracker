@@ -1,4 +1,4 @@
-import {renderProfitChart} from './profit-chart.js';
+import {renderProfitChart} from './profit-chart.js?v=20261105-drag1';
 import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity } from './model.js';
 const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [], shows: [] });
 let state = fresh(), tab = 'home', mode, id;
