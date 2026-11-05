@@ -1,3 +1,4 @@
+import {renderProfitChart} from './profit-chart.js';
 import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity } from './model.js';
 const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [], shows: [] });
 let state = fresh(), tab = 'inventory', mode, id;
@@ -97,7 +98,7 @@ function render() {
     $('#hero-value').textContent = money(all.inventory);
     const isCards = tab === 'inventory';
     const isEvents = tab === 'show' || tab === 'calendar';
-    for (const selector of ['.heading','.report-controls','#stats','#sales-summary','#insights','.formula']) $(selector).hidden = isEvents;
+    for (const selector of ['.heading','.report-controls','#stats','#profit-chart','#sales-summary','#insights','.formula']) $(selector).hidden = isEvents;
     $('#sales-summary').innerHTML = `<span>Sales revenue <b>${money(period.revenue)}</b></span><span>Sold card costs <b>${money(period.cost)}</b></span><span>Selling fees <b>${money(period.fees)}</b></span><span>${from || to ? 'Selected period' : 'All time'} · inventory shown at current cost</span>`;
     $('#stats').innerHTML = [
         ['Net profit', money(period.profit), 'After cost, fees & expenses'],
@@ -105,6 +106,7 @@ function render() {
         ['Cards on hand', all.quantity, 'Total individual cards owned'],
         ['Business expenses', money(period.expenses), 'Excludes card costs & selling fees']
     ].map((x, i) => `<div class="stat"><div class="stat-top"><label>${x[0]}</label><span class="stat-icon">${icon(['profit','inventory','quantity','expenses'][i])}</span></div><strong class="${i === 0 ? (period.profit < 0 ? 'negative' : 'positive') : ''}">${x[1]}</strong><small>${x[2]}</small></div>`).join('');
+    if (!isEvents) renderProfitChart($('#profit-chart'),state,from,to);
     $('#insights').innerHTML = `<span><b>${insights.transactions}</b> ${insights.transactions === 1 ? 'sale' : 'sales'} recorded</span><span><b>${insights.quantity}</b> cards sold</span><span><b>${insights.quantity ? money(insights.averageProfit) : '—'}</b> average profit / sold card <small>before business expenses</small></span>`;
     $('#crumb').textContent = tab === 'show' ? 'SHOWS' : tab.toUpperCase();
     $('#page-kicker').textContent = {inventory:'01 / THE COLLECTION',show:'02 / ON THE ROAD',calendar:'03 / WHAT’S NEXT',sales:'04 / YOUR TRACK RECORD',expenses:'05 / THE DETAILS'}[tab];
