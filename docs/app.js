@@ -1,11 +1,12 @@
 import {renderProfitChart} from './profit-chart.js';
 import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity } from './model.js';
 const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [], shows: [] });
-let state = fresh(), tab = 'inventory', mode, id;
+let state = fresh(), tab = 'home', mode, id;
 let calendarMonth = new Date(new Date().getFullYear(),new Date().getMonth(),1);
 let account = null, revision = null, ready = false, busy = false, generation = 0;
 import { client, loadPortfolio, writePortfolio } from './cloud.js';
 const iconPaths = {
+ home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10Z"/>',
  inventory:'<rect x="4" y="5" width="11" height="15" rx="2"/><path d="M9 3h9a2 2 0 0 1 2 2v12M7 15l3-4 3 4"/>',
  show:'<path d="M3 10h18l-2-6H5l-2 6ZM5 10v10h14V10M9 20v-6h6v6M3 10a3 3 0 0 0 4 2 3 3 0 0 0 5 0 3 3 0 0 0 5 0 3 3 0 0 0 4-2"/>',
  calendar:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 5h2m4 0h2"/>',
@@ -86,7 +87,7 @@ async function save(next) {
 function render() {
     queueMicrotask(lock);
     const from = $('#from').value, to = $('#to').value;
-    if (tab !== 'show' && tab !== 'calendar' && from && to && from > to) {
+    if (['home','sales','expenses'].includes(tab) && from && to && from > to) {
         $('#period-error').textContent = 'From date must be before To date.';
         return;
     }
@@ -98,7 +99,10 @@ function render() {
     $('#hero-value').textContent = money(all.inventory);
     const isCards = tab === 'inventory';
     const isEvents = tab === 'show' || tab === 'calendar';
-    for (const selector of ['.heading','.report-controls','#stats','#profit-chart','#sales-summary','#insights','.formula']) $(selector).hidden = isEvents;
+    const isHome = tab === 'home';
+    for (const selector of ['.heading','#stats','#profit-chart','#sales-summary','#insights','.formula']) $(selector).hidden = !isHome;
+    $('.report-controls').hidden = !['home','sales','expenses'].includes(tab);
+    $('.panel').hidden = isHome;
     $('#sales-summary').innerHTML = `<span>Sales revenue <b>${money(period.revenue)}</b></span><span>Sold card costs <b>${money(period.cost)}</b></span><span>Selling fees <b>${money(period.fees)}</b></span><span>${from || to ? 'Selected period' : 'All time'} · inventory shown at current cost</span>`;
     $('#stats').innerHTML = [
         ['Net profit', money(period.profit), 'After cost, fees & expenses'],
@@ -106,12 +110,12 @@ function render() {
         ['Cards on hand', all.quantity, 'Total individual cards owned'],
         ['Business expenses', money(period.expenses), 'Excludes card costs & selling fees']
     ].map((x, i) => `<div class="stat"><div class="stat-top"><label>${x[0]}</label><span class="stat-icon">${icon(['profit','inventory','quantity','expenses'][i])}</span></div><strong class="${i === 0 ? (period.profit < 0 ? 'negative' : 'positive') : ''}">${x[1]}</strong><small>${x[2]}</small></div>`).join('');
-    if (!isEvents) renderProfitChart($('#profit-chart'),state,from,to);
+    if (isHome) renderProfitChart($('#profit-chart'),state,from,to);
     $('#insights').innerHTML = `<span><b>${insights.transactions}</b> ${insights.transactions === 1 ? 'sale' : 'sales'} recorded</span><span><b>${insights.quantity}</b> cards sold</span><span><b>${insights.quantity ? money(insights.averageProfit) : '—'}</b> average profit / sold card <small>before business expenses</small></span>`;
     $('#crumb').textContent = tab === 'show' ? 'SHOWS' : tab.toUpperCase();
-    $('#page-kicker').textContent = {inventory:'01 / THE COLLECTION',show:'02 / ON THE ROAD',calendar:'03 / WHAT’S NEXT',sales:'04 / YOUR TRACK RECORD',expenses:'05 / THE DETAILS'}[tab];
-    $('#section-title').textContent = { inventory: 'Your inventory', show: 'Your shows', calendar: 'Show calendar', sales: 'Sales history', expenses: 'Business expenses' }[tab];
-    $('#section-sub').textContent = { inventory: 'A home for every card in your collection.', show: 'Plan your next show and keep the details together.', calendar: 'Every show, on your calendar.', sales: 'Every sale, with its true profit.', expenses: 'Table fees, supplies, travel, and more.' }[tab];
+    $('#page-kicker').textContent = {home:'OVERVIEW',inventory:'01 / THE COLLECTION',show:'02 / ON THE ROAD',calendar:'03 / WHAT’S NEXT',sales:'04 / YOUR TRACK RECORD',expenses:'05 / THE DETAILS'}[tab];
+    $('#section-title').textContent = { home: 'Home', inventory: 'Your inventory', show: 'Your shows', calendar: 'Show calendar', sales: 'Sales history', expenses: 'Business expenses' }[tab];
+    $('#section-sub').textContent = { home: 'Your collection at a glance.', inventory: 'A home for every card in your collection.', show: 'Plan your next show and keep the details together.', calendar: 'Every show, on your calendar.', sales: 'Every sale, with its true profit.', expenses: 'Table fees, supplies, travel, and more.' }[tab];
     $('#add').textContent = tab === 'expenses' ? '＋ Add expense' : isEvents ? '＋ Add show' : '＋ Add card';
     $('#add').hidden = tab === 'sales';
     $('#filter').hidden = !isCards;
@@ -285,8 +289,9 @@ catch (e) {
 } };
 $('#add').onclick = () => open(tab === 'show' || tab === 'calendar' ? 'showEvent' : tab === 'expenses' ? 'expense' : 'card');
 $('#hero-add').onclick = () => account ? open('card') : $('#signin-dialog').showModal();
-$('#hero-shows').onclick = () => { tab='show'; $('#search').value=''; render(); };
+$('#hero-inventory').onclick = () => { tab='inventory'; $('#search').value=''; render(); };
 $('#close').onclick = () => $('#modal').close();
+$('.brand').onclick = e => { e.preventDefault(); tab='home'; $('#search').value=''; render(); };
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; $('#search').value = ''; render(); });
 $('#from').onchange = render;
 $('#to').onchange = render;
