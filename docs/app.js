@@ -199,6 +199,43 @@ function open(kind, recordId) {
     $('#modal-title').textContent = { card: 'Add a card', edit: 'Edit card', sell: 'Record a sale', expense: 'Add expense', showEvent: 'Add show', editShow: 'Edit show' }[kind];
     if (kind === 'card' || kind === 'edit') {
         $('#fields').innerHTML = `<label>Card type<select name="cardType"><option value="Raw">Raw</option><option value="Graded" ${c && c.grading !== 'Raw' ? 'selected' : ''}>Graded</option></select></label><label>Grading company<select name="grading">${['PSA','SGC','Other'].map(g=>`<option ${c?.grading===g?'selected':''}>${g}</option>`).join('')}</select></label>` + input('cert', 'Cert number', c?.cert || '', 'text', 'maxlength="80"') + input('name', 'Player / card name', c?.name || '', 'text', 'required maxlength="120"') + input('details', 'Year, set, card #, parallel', c?.details || '', 'text', 'maxlength="200"') + input('grade', 'Grade', c?.grade || '', 'text', 'maxlength="30"') + input('qty', 'Quantity purchased', c?.qty || 1, 'number', 'required min="1" step="1"') + input('cost', 'Cost per card ($)', c ? c.cost / 100 : '', 'number', 'required min="0" step="0.01"') + input('purchaseDate', 'Purchase date', c?.purchaseDate || (c ? '' : today()), 'date', c ? '' : 'required') + input('notes', 'Notes', c?.notes || '', 'text', 'maxlength="500"') + '<small class="wide">Each entry is a separate purchase with its own date and cost. You can reuse a cert for another purchase. Add graded slabs one at a time; record sales against the purchase you are selling.</small>';
+        // Suggestions are rebuilt from this account's cloud-loaded purchases only.
+        const savedNames = [...new Map(state.cards.map(card => {
+            const name = card.name.trim().replace(/\s+/g, ' ');
+            return [name.toLocaleLowerCase(), name];
+        }).filter(([key]) => key)).values()].sort((a,b) => a.localeCompare(b));
+        const nameField = $('[name="name"]'), oldLabel=nameField.closest('label');
+        const wrapper=document.createElement('div');wrapper.className='card-name-field';
+        oldLabel.replaceWith(wrapper);
+        wrapper.innerHTML='<label for="card-name">Player / card name</label>';
+        nameField.id='card-name';nameField.autocomplete='off';
+        nameField.setAttribute('role','combobox');nameField.setAttribute('aria-autocomplete','list');
+        nameField.setAttribute('aria-controls','card-name-options');nameField.setAttribute('aria-expanded','false');
+        nameField.setAttribute('aria-describedby','name-suggestion-help');wrapper.append(nameField);
+        wrapper.insertAdjacentHTML('beforeend','<small id="name-suggestion-help">Type to choose a saved name, or enter a new one.</small><div id="card-name-options" class="name-options" role="listbox" aria-label="Saved card names" hidden></div>');
+        const options=wrapper.querySelector('.name-options');let matches=[],active=-1;
+        const hideNames=()=>{options.hidden=true;nameField.setAttribute('aria-expanded','false');nameField.removeAttribute('aria-activedescendant');active=-1;};
+        const chooseName=i=>{nameField.value=matches[i];hideNames();nameField.focus();};
+        const updateNames=()=>{
+            active=-1;const query=nameField.value.trim().toLocaleLowerCase();
+            matches=query?savedNames.filter(name=>name.toLocaleLowerCase().includes(query)).slice(0,8):[];
+            options.innerHTML=matches.map((name,i)=>`<button type="button" role="option" id="saved-name-${i}" aria-selected="false" data-name-index="${i}" tabindex="-1">${esc(name)}</button>`).join('');
+            options.hidden=!matches.length;nameField.setAttribute('aria-expanded',String(!!matches.length));nameField.removeAttribute('aria-activedescendant');
+        };
+        nameField.oninput=updateNames;nameField.onfocus=updateNames;
+        nameField.onblur=hideNames;
+        options.onpointerdown=e=>e.preventDefault();
+        options.onclick=e=>{const button=e.target.closest('[data-name-index]');if(button)chooseName(Number(button.dataset.nameIndex));};
+        nameField.onkeydown=e=>{
+            if(e.key==='Escape'){hideNames();e.stopPropagation();return;}
+            if(options.hidden)return;
+            if(e.key==='Enter' && active>=0){e.preventDefault();chooseName(active);return;}
+            if(e.key==='ArrowDown' || e.key==='ArrowUp'){
+                e.preventDefault();active=active<0?(e.key==='ArrowDown'?0:matches.length-1):(active+(e.key==='ArrowDown'?1:-1)+matches.length)%matches.length;
+                options.querySelectorAll('button').forEach((button,i)=>button.setAttribute('aria-selected',String(i===active)));
+                nameField.setAttribute('aria-activedescendant',`saved-name-${active}`);
+            }
+        };
         const updateGrading = () => {
             const graded = $('[name="cardType"]').value === 'Graded';
             for (const name of ['grading', 'cert', 'grade']) {
