@@ -28,7 +28,15 @@ async function loadAccount(user) {
     showWorkspace(user);
     $('#auth-form').hidden = !!user;
     $('#auth-entry').hidden = !!user;
-    $('#auth-description').hidden = !!user;
+    $('#open-login').hidden = !!user;
+    document.querySelector('main > .cloud-panel').hidden = !user;
+    if (user) {
+        $('#signin-dialog').close();
+        $('#signup-dialog').close();
+        $('#reset-dialog').close();
+    } else if (!document.querySelector('dialog[open]')) {
+        $('#signin-dialog').showModal();
+    }
     $('#cloud-actions').hidden = !user;
     $('#signout').hidden = !user;
     if (!user) { $('#cloud-status').textContent='Signed out'; return; }
@@ -281,6 +289,14 @@ $('#import-local').onclick=async()=> {
         await save(data);
     } catch(e) { $('#notice').textContent=e.message; }
 };
+$('#open-login').onclick=()=> { if(!account && !$('#signin-dialog').open) $('#signin-dialog').showModal(); };
+$('#close-login').onclick=()=>$('#signin-dialog').close();
+$('#signin-dialog').addEventListener('close',()=> { $('#password').value=''; });
+for (const selector of ['#signup-dialog','#reset-dialog']) {
+    $(selector).addEventListener('close',()=> {
+        if(!account && !document.querySelector('dialog[open]')) $('#signin-dialog').showModal();
+    });
+}
 const redirectTo = 'https://526cloiacono.github.io/mc-sports-tracker/';
 $('#auth-form').onsubmit=async e=> {
     e.preventDefault();
@@ -296,6 +312,7 @@ $('#auth-form').onsubmit=async e=> {
 };
 let resetPending=false;
 $('#open-reset').onclick=()=> {
+    $('#signin-dialog').close();
     $('#reset-form').reset(); $('#reset-email').value=$('#email').value.trim();
     $('#reset-message').textContent=''; $('#reset-dialog').showModal();
 };
@@ -314,6 +331,7 @@ $('#reset-form').onsubmit=async e=>{
 };
 let signupPending = false;
 $('#open-signup').onclick = () => {
+    $('#signin-dialog').close();
     $('#signup-error').textContent = '';
     $('#signup-form').reset();
     $('#signup-confirm').setCustomValidity('');
@@ -358,7 +376,7 @@ $('#password-form').onsubmit=async e=> {
 };
 client.auth.onAuthStateChange((event,session)=> {
     if(event==='USER_UPDATED') { account=session?.user || null; showWorkspace(account); }
-    if(event==='PASSWORD_RECOVERY') $('#password-dialog').showModal();
+    if(event==='PASSWORD_RECOVERY') { $('#signin-dialog').close(); $('#password-dialog').showModal(); }
     if(event==='INITIAL_SESSION' || event==='SIGNED_OUT' || (event==='SIGNED_IN' && session?.user.id !== account?.id))
         setTimeout(()=>loadAccount(session?.user || null),0);
 });
