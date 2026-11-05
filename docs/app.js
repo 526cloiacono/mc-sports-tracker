@@ -4,6 +4,17 @@ let state = fresh(), tab = 'inventory', mode, id;
 let calendarMonth = new Date(new Date().getFullYear(),new Date().getMonth(),1);
 let account = null, revision = null, ready = false, busy = false, generation = 0;
 import { client, loadPortfolio, writePortfolio } from './cloud.js';
+const iconPaths = {
+ inventory:'<rect x="4" y="5" width="11" height="15" rx="2"/><path d="M9 3h9a2 2 0 0 1 2 2v12M7 15l3-4 3 4"/>',
+ show:'<path d="M3 10h18l-2-6H5l-2 6ZM5 10v10h14V10M9 20v-6h6v6M3 10a3 3 0 0 0 4 2 3 3 0 0 0 5 0 3 3 0 0 0 5 0 3 3 0 0 0 4-2"/>',
+ calendar:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 5h2m4 0h2"/>',
+ sales:'<path d="m4 17 6-6 4 3 6-9m-6 0h6v6M4 21h16"/>',
+ expenses:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h3"/>',
+ profit:'<path d="M12 3v18m5-14H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+ quantity:'<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'
+};
+const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name] || iconPaths.inventory}</svg>`;
+for (const button of document.querySelectorAll('nav button')) button.innerHTML=icon(button.dataset.tab)+`<span>${button.textContent}</span>`;
 function lock() {
     const blocked = !ready || busy;
     for (const selector of ['#add','#restore','#import-local','#clear-show','#calendar-view .calendar-event','#content button','#form button[type="submit"]'])
@@ -20,6 +31,7 @@ function showWorkspace(user) {
     $('#workspace-name').title = label;
     $('#workspace-label').textContent = user ? 'Personal workspace' : 'Sign in to your workspace';
     $('#workspace-initials').textContent = user ? (names.length ? names.map(n => Array.from(n)[0]).join('') : Array.from(label)[0]).toUpperCase() : '?';
+    $('#welcome-line').textContent = user ? `Welcome back${names[0] ? ', '+names[0] : ''}. Make your next move.` : 'A LITTLE ORGANIZATION. A BIGGER NEXT MOVE.';
     $('#account-name').textContent = user ? `${label}’s workspace` : 'Welcome back.';
 }
 async function loadAccount(user) {
@@ -80,6 +92,9 @@ function render() {
     $('#period-error').textContent = '';
     const all = totals(state), period = periodTotals(state, from, to);
     const insights = saleInsights(state, from, to);
+    $('main').dataset.page = tab;
+    $('#hero-count').textContent = all.quantity.toLocaleString();
+    $('#hero-value').textContent = money(all.inventory);
     const isCards = tab === 'inventory';
     const isEvents = tab === 'show' || tab === 'calendar';
     for (const selector of ['.heading','.report-controls','#stats','#sales-summary','#insights','.formula']) $(selector).hidden = isEvents;
@@ -89,9 +104,10 @@ function render() {
         ['Inventory value', money(all.inventory), 'At purchase cost · unsold cards'],
         ['Cards on hand', all.quantity, 'Total individual cards owned'],
         ['Business expenses', money(period.expenses), 'Excludes card costs & selling fees']
-    ].map((x, i) => `<div class="stat"><label>${x[0]}</label><strong class="${i === 0 ? (period.profit < 0 ? 'negative' : 'positive') : ''}">${x[1]}</strong><small>${x[2]}</small></div>`).join('');
+    ].map((x, i) => `<div class="stat"><div class="stat-top"><label>${x[0]}</label><span class="stat-icon">${icon(['profit','inventory','quantity','expenses'][i])}</span></div><strong class="${i === 0 ? (period.profit < 0 ? 'negative' : 'positive') : ''}">${x[1]}</strong><small>${x[2]}</small></div>`).join('');
     $('#insights').innerHTML = `<span><b>${insights.transactions}</b> ${insights.transactions === 1 ? 'sale' : 'sales'} recorded</span><span><b>${insights.quantity}</b> cards sold</span><span><b>${insights.quantity ? money(insights.averageProfit) : '—'}</b> average profit / sold card <small>before business expenses</small></span>`;
     $('#crumb').textContent = tab === 'show' ? 'SHOWS' : tab.toUpperCase();
+    $('#page-kicker').textContent = {inventory:'01 / THE COLLECTION',show:'02 / ON THE ROAD',calendar:'03 / WHAT’S NEXT',sales:'04 / YOUR TRACK RECORD',expenses:'05 / THE DETAILS'}[tab];
     $('#section-title').textContent = { inventory: 'Your inventory', show: 'Your shows', calendar: 'Show calendar', sales: 'Sales history', expenses: 'Business expenses' }[tab];
     $('#section-sub').textContent = { inventory: 'A home for every card in your collection.', show: 'Plan your next show and keep the details together.', calendar: 'Every show, on your calendar.', sales: 'Every sale, with its true profit.', expenses: 'Table fees, supplies, travel, and more.' }[tab];
     $('#add').textContent = tab === 'expenses' ? '＋ Add expense' : isEvents ? '＋ Add show' : '＋ Add card';
@@ -266,6 +282,8 @@ catch (e) {
     alert(e.message);
 } };
 $('#add').onclick = () => open(tab === 'show' || tab === 'calendar' ? 'showEvent' : tab === 'expenses' ? 'expense' : 'card');
+$('#hero-add').onclick = () => account ? open('card') : $('#signin-dialog').showModal();
+$('#hero-shows').onclick = () => { tab='show'; $('#search').value=''; render(); };
 $('#close').onclick = () => $('#modal').close();
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; $('#search').value = ''; render(); });
 $('#from').onchange = render;
