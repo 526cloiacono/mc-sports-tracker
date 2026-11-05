@@ -13,3 +13,15 @@ Email confirmation remains enabled. The default Supabase mail service only permi
 Vendor rebuild: npm ci && npm run build:vendor. supabase.js is a pinned browser bundle; commit it with package-lock.json so GitHub Pages needs no build step.
 
 Validation: existing financial model tests; database RLS cross-user isolation and revision tests in a rolled-back transaction; Supabase security advisor.
+
+## Public-launch work (November 5, 2026)
+
+Public privacy, terms, contact/deletion instructions, and vendor notices are in privacy.html, terms.html, contact.html, and licenses.html. The contact is the owner-approved Instagram @mc_sports27. Signup includes a required Terms checkbox. This is not a legal compliance certification or a trademark clearance.
+
+Account-deletion requests are manual. Do not treat an Instagram username or claimed email as proof of ownership. Arrange confirmation through the registered account/email; never ask for passwords, recovery links, or sign-in codes. After ownership is verified and the user confirms deletion, export only if requested, revoke active sessions, delete their portfolios row and Auth user in Supabase, and verify both removals. Do not delete other users or send portfolio contents over social media. Check provider backup/log retention separately. Confirm completion privately. No automatic deletion or request-monitoring service is installed.
+
+Remaining launch setup:
+1. Choose and connect a production hosting account that permits the intended business use (for example Cloudflare Pages). The static publish directory is docs; no build command is needed. GitHub Pages commercial-use restrictions still apply to the existing deployment.
+2. Set the Supabase Auth Site URL to the final HTTPS app URL and allow that exact URL in redirect settings. app.js currently pins the GitHub Pages URL in redirectTo; update it during migration so confirmation/reset links return to the new host. Sessions saved on the old browser origin do not transfer; users sign in again. Cloud portfolio data remains in the same Supabase project.
+3. Configure a verified sender/domain and custom SMTP in Supabase Authentication. Keep provider credentials out of the repository and frontend. Keep email confirmation enabled. Test registration, confirmation, login, reset, and recovery using an owner-approved test address. The connector currently provides no Auth configuration/SMTP management capability; use the Supabase dashboard.
+4. Verify the intended public brand/domain and review the published policies for the operator's jurisdiction and practices. An exact purchased domain has not been supplied.
