@@ -224,3 +224,23 @@ footer .legal-links{height:auto;min-height:0;align-items:center;justify-content:
     aside .workspace #workspace-name { max-width: 57px; }
     aside button.workspace::after { margin-left: 0; }
 }
+
+/* Past days remain visible, with their calendar events disabled. */
+.calendar-day.past,
+.calendar-day.past:hover {
+    background: #4b5059;
+    color: #f5f6f8;
+    border-color: #626975;
+}
+.calendar-day.past.has-events::after { background: #c2c7d0; }
+.calendar-event.is-past {
+    background: #e5e7eb;
+    border-color: #cbd0d7;
+    color: #444b57;
+    opacity: 1;
+}
+.calendar-day.past .calendar-event.is-past {
+    background: #3d424a;
+    border-color: #747b87;
+    color: #f0f2f5;
+}

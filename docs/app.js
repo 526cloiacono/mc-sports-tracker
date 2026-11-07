@@ -4,6 +4,7 @@ const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => (
 const compactChart = window.matchMedia('(max-width: 560px)');
 let state = fresh(), tab = 'home', mode, id;
 let calendarMonth = new Date(new Date().getFullYear(),new Date().getMonth(),1);
+let calendarRefreshTimer;
 let account = null, revision = null, ready = false, busy = false, generation = 0;
 import { client, loadPortfolio, writePortfolio } from './cloud.js';
 const iconPaths = {
@@ -20,7 +21,7 @@ const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 for (const button of document.querySelectorAll('nav button')) button.innerHTML=icon(button.dataset.tab)+`<span>${button.textContent}</span>`;
 function lock() {
     const blocked = !ready || busy;
-    for (const selector of ['#add','#restore','#import-local','#clear-show','#calendar-view .calendar-event','#content button','#form button[type="submit"]'])
+    for (const selector of ['#add','#restore','#import-local','#clear-show','#calendar-view .calendar-event[data-action]','#content button','#form button[type="submit"]'])
         document.querySelectorAll(selector).forEach(b => b.disabled = blocked);
     $('#refresh-cloud').disabled = busy || !account;
     $('#signout').disabled = busy;
@@ -87,6 +88,7 @@ async function save(next) {
     } finally { busy = false; lock(); }
 }
 function render() {
+    clearTimeout(calendarRefreshTimer);
     queueMicrotask(lock);
     const from = $('#from').value, to = $('#to').value;
     if (['home','sales','expenses'].includes(tab) && from && to && from > to) {
@@ -182,16 +184,23 @@ function render() {
     }
 }
 function renderCalendar() {
+    const currentDate = today();
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+    calendarRefreshTimer = setTimeout(render, midnight.getTime() - Date.now());
     const year=calendarMonth.getFullYear(), month=calendarMonth.getMonth();
     const start=new Date(year,month,1).getDay(), days=new Date(year,month+1,0).getDate();
     const dateKey=day=>`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const monthShows = (state.shows || [])
         .filter(show => show.date.startsWith(dateKey(1).slice(0, 7)))
         .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    const eventAttributes = show => show.date < currentDate
+        ? 'class="calendar-event is-past" disabled'
+        : `class="calendar-event" data-action="editShow" data-id="${esc(show.id)}"`;
     const agenda = monthShows.map(show => {
         const date = new Date(show.date + 'T12:00:00');
         const dayLabel = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        return `<button class="calendar-event" data-action="editShow" data-id="${esc(show.id)}">
+        return `<button ${eventAttributes(show)}>
             <time datetime="${esc(show.date)}">${esc(dayLabel)} · ${esc(show.time)}</time>
             <b>${esc(show.name)}</b><small>${esc(show.location)}</small>
         </button>`;
@@ -199,7 +208,7 @@ function renderCalendar() {
     let cells=Array.from({length:start},()=>'<div class="calendar-day blank" aria-hidden="true"></div>').join('');
     for(let day=1;day<=days;day++) {
         const date=dateKey(day), shows=monthShows.filter(show => show.date === date);
-        cells+=`<div class="calendar-day ${date===today()?'today':''} ${shows.length ? 'has-events' : ''}"><time datetime="${date}">${day}</time>${shows.map(x=>`<button class="calendar-event" data-action="editShow" data-id="${esc(x.id)}" title="${esc(x.location)}"><b>${esc(x.time)} · ${esc(x.name)}</b><small>${esc(x.location)}</small></button>`).join('')}</div>`;
+        cells+=`<div class="calendar-day ${date === currentDate ? 'today' : date < currentDate ? 'past' : ''} ${shows.length ? 'has-events' : ''}"><time datetime="${date}">${day}</time>${shows.map(x=>`<button ${eventAttributes(x)} title="${esc(x.location)}"><b>${esc(x.time)} · ${esc(x.name)}</b><small>${esc(x.location)}</small></button>`).join('')}</div>`;
     }
     $('#calendar-view').innerHTML=`<div class="calendar-toolbar"><button data-month="-1" aria-label="Previous month">←</button><h3>${calendarMonth.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</h3><button data-month="1" aria-label="Next month">→</button><button data-month="today">Today</button></div><div class="calendar-grid">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="weekday">${d}</div>`).join('')}${cells}</div><section class="calendar-agenda" aria-label="Shows this month"><h4>Shows this month</h4>${agenda || '<p>No shows scheduled this month.</p>'}</section>`;
 }
