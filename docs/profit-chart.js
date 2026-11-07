@@ -26,25 +26,30 @@ export function profitSeries(state, from='', to='') {
 const money=v=>(v/100).toLocaleString('en-US',{style:'currency',currency:'USD'});
 const dateLabel=d=>new Date(d+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 const time=d=>Date.parse(d+'T12:00:00Z');
-export function renderProfitChart(host,state,from='',to=''){
+export function renderProfitChart(host,state,from='',to='',compact=false){
     const {points,undated}=profitSeries(state,from,to);
     const total=points.at(-1)?.value || 0;
     host.innerHTML=`<div class="profit-chart-head"><div><p class="panel-kicker">THE BIGGER PICTURE</p><h2 id="profit-chart-title">Profit over time</h2><p class="chart-sub">Cumulative net profit · ${from||to?'Selected period':'All time'} · Starts at $0</p></div><div class="chart-total ${total<0?'negative':'positive'}">${money(total)}<small>Sales profit minus expenses</small></div></div><div class="chart-legend"><span class="up">Rising profit</span><span class="down">Falling profit</span></div><div id="profit-plot"></div><div class="chart-inspector" ${points.length?'':'hidden'}><p id="chart-reading" role="status" aria-live="polite"></p><label for="profit-point">Drag the chart or explore timeline</label><input id="profit-point" type="range" min="0" max="${Math.max(0,points.length-1)}" value="${Math.max(0,points.length-1)}" step="1"></div><p class="chart-note">Includes sold-card costs, selling fees, and business expenses. Unsold inventory is excluded.${undated?' Undated records are not plotted.':''}</p>`;
     const plot=host.querySelector('#profit-plot');
     if(!points.length){plot.innerHTML='<div class="chart-empty"><svg viewBox="0 0 800 130" aria-hidden="true"><path d="M0 95H800M0 55H800M0 15H800" stroke="#e6ebf3"/><path d="M0 95H800" stroke="#a8b5cc" stroke-width="2" stroke-dasharray="5 7"/></svg><b>Your profit story starts with your first transaction.</b><p>Record a sale or expense to see your chart here.</p></div>';return;}
-    const W=1000,H=270,L=78,R=24,T=22,B=38, width=W-L-R,height=H-T-B;
+    const W=compact ? 340 : 1000, H=compact ? 218 : 270;
+    const L=compact ? 48 : 78, R=compact ? 8 : 24, T=22, B=38;
+    const width=W-L-R, height=H-T-B;
+    const axisMoney = new Intl.NumberFormat('en-US', {
+        style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1
+    });
     const min=Math.min(0,...points.map(p=>p.value)), max=Math.max(0,...points.map(p=>p.value));
     const pad=Math.max(100,(max-min)*.12), low=min-pad,high=max+pad;
     const start=time(points[0].date),span=Math.max(86400000,time(points.at(-1).date)-start);
     const x=p=>L+(time(p.date)-start)/span*width,y=v=>T+(high-v)/(high-low)*height;
     let markup='';
-    for(let i=0;i<5;i++){const v=low+(high-low)*i/4;const py=y(v);markup+=`<line x1="${L}" x2="${W-R}" y1="${py}" y2="${py}" stroke="#e8edf5"/><text x="${L-12}" y="${py+4}" text-anchor="end" class="chart-axis">${money(v)}</text>`;}
+    for(let i=0;i<5;i++){const v=low+(high-low)*i/4;const py=y(v);markup+=`<line x1="${L}" x2="${W-R}" y1="${py}" y2="${py}" stroke="#e8edf5"/><text x="${L-12}" y="${py+4}" text-anchor="end" class="chart-axis">${compact ? axisMoney.format(v/100) : money(v)}</text>`;}
     markup+=`<line x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}" stroke="#b6c2d5" stroke-dasharray="4 5"/>`;
     for(let i=1;i<points.length;i++){
         const a=points[i-1],b=points[i],color=b.value>a.value?'#15976c':b.value<a.value?'#d55063':'#95a4bb';
         markup+=`<path d="M${x(a)},${y(a.value)} L${x(b)},${y(b.value)} L${x(b)},${y(0)} L${x(a)},${y(0)}Z" fill="${color}" opacity=".065"/><path d="M${x(a)},${y(a.value)} L${x(b)},${y(b.value)}" stroke="${color}" stroke-width="3" stroke-linecap="round" fill="none"/>`;
     }
-    const labels=[0,Math.floor((points.length-1)/2),points.length-1].filter((v,i,a)=>a.indexOf(v)===i);
+    const labels = compact ? [0, points.length - 1] : [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
     labels.forEach(i=>{const p=points[i];markup+=`<text x="${x(p)}" y="${H-10}" text-anchor="${i===0?'start':i===points.length-1?'end':'middle'}" class="chart-axis">${dateLabel(p.date)}</text>`;});
     markup+='<line id="chart-crosshair" stroke="#617392" stroke-dasharray="3 4"/><circle id="chart-dot" r="5" fill="#4265dc" stroke="white" stroke-width="3"/><g id="chart-tooltip" pointer-events="none" visibility="hidden"><rect width="182" height="74" rx="9" fill="#182e50" stroke="#47628c"/><text id="chart-tip-date" x="12" y="19" fill="#b4c6e1" font-size="10"></text><text id="chart-tip-profit" x="12" y="42" fill="white" font-size="18" font-weight="700"></text><text id="chart-tip-change" x="12" y="60" fill="#b4c6e1" font-size="10"></text></g>';
     plot.innerHTML=`<svg id="profit-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative net profit: ${money(total)}. Green segments rise; red segments fall. Drag across the line or use Explore timeline below for date and value details.">${markup}</svg>`;

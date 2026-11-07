@@ -1,6 +1,7 @@
-import {renderProfitChart} from './profit-chart.js?v=20261105-hover1';
+import {renderProfitChart} from './profit-chart.js?v=20261107-mobile1';
 import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity } from './model.js';
 const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [], shows: [] });
+const compactChart = window.matchMedia('(max-width: 560px)');
 let state = fresh(), tab = 'home', mode, id;
 let calendarMonth = new Date(new Date().getFullYear(),new Date().getMonth(),1);
 let account = null, revision = null, ready = false, busy = false, generation = 0;
@@ -111,7 +112,7 @@ function render() {
         ['Cards on hand', all.quantity, 'Total individual cards owned'],
         ['Business expenses', money(period.expenses), 'Excludes card costs & selling fees']
     ].map((x, i) => `<div class="stat"><div class="stat-top"><label>${x[0]}</label><span class="stat-icon">${icon(['profit','inventory','quantity','expenses'][i])}</span></div><strong class="${i === 0 ? (period.profit < 0 ? 'negative' : 'positive') : ''}">${x[1]}</strong><small>${x[2]}</small></div>`).join('');
-    if (isHome) renderProfitChart($('#profit-chart'),state,from,to);
+    if (isHome) renderProfitChart($('#profit-chart'),state,from,to,compactChart.matches);
     $('#insights').innerHTML = `<span><b>${insights.transactions}</b> ${insights.transactions === 1 ? 'sale' : 'sales'} recorded</span><span><b>${insights.quantity}</b> cards sold</span><span><b>${insights.quantity ? money(insights.averageProfit) : '—'}</b> average profit / sold card <small>before business expenses</small></span>`;
     $('#crumb').textContent = tab === 'show' ? 'SHOWS' : tab.toUpperCase();
     $('#page-kicker').textContent = {home:'OVERVIEW',inventory:'01 / THE COLLECTION',show:'02 / ON THE ROAD',calendar:'03 / WHAT’S NEXT',sales:'04 / YOUR TRACK RECORD',expenses:'05 / THE DETAILS'}[tab];
@@ -171,18 +172,36 @@ function render() {
     const filtered = q || (isCards && grading !== 'all') || (tab === 'inventory' && $('#status-filter').value !== 'available');
     const emptyTitle = filtered ? 'No matching records' : tab === 'show' ? 'Plan your next show.' : tab === 'inventory' ? 'Your next flip starts here.' : 'No records yet.';
     const emptyBody = filtered ? 'Try another search or change your filters.' : tab === 'show' ? 'Add a show with its location, date, time, and notes. It will appear on your calendar.' : tab === 'inventory' ? 'Add your first card to start tracking your collection and profit.' : 'Your records will appear here as you add them.';
-    $('#content').innerHTML = rows ? `<table><thead><tr>${heads.map(x => `<th scope="col">${x}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><b>${emptyTitle}</b>${emptyBody}</div>`;
+    $('#content').innerHTML = rows ? `<table role="table"><thead role="rowgroup"><tr role="row">${heads.map(x => `<th role="columnheader" scope="col">${x}</th>`).join('')}</tr></thead><tbody role="rowgroup">${rows}</tbody></table>` : `<div class="empty"><b>${emptyTitle}</b>${emptyBody}</div>`;
+    for (const row of $('#content').querySelectorAll('tbody tr')) {
+        row.setAttribute('role', 'row');
+        Array.from(row.cells).forEach((cell, index) => {
+            cell.setAttribute('role', 'cell');
+            cell.dataset.label = heads[index];
+        });
+    }
 }
 function renderCalendar() {
     const year=calendarMonth.getFullYear(), month=calendarMonth.getMonth();
     const start=new Date(year,month,1).getDay(), days=new Date(year,month+1,0).getDate();
     const dateKey=day=>`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const monthShows = (state.shows || [])
+        .filter(show => show.date.startsWith(dateKey(1).slice(0, 7)))
+        .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    const agenda = monthShows.map(show => {
+        const date = new Date(show.date + 'T12:00:00');
+        const dayLabel = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        return `<button class="calendar-event" data-action="editShow" data-id="${esc(show.id)}">
+            <time datetime="${esc(show.date)}">${esc(dayLabel)} · ${esc(show.time)}</time>
+            <b>${esc(show.name)}</b><small>${esc(show.location)}</small>
+        </button>`;
+    }).join('');
     let cells=Array.from({length:start},()=>'<div class="calendar-day blank" aria-hidden="true"></div>').join('');
     for(let day=1;day<=days;day++) {
-        const date=dateKey(day), shows=(state.shows || []).filter(x=>x.date===date).slice().sort((a,b)=>a.time.localeCompare(b.time));
-        cells+=`<div class="calendar-day ${date===today()?'today':''}"><time datetime="${date}">${day}</time>${shows.map(x=>`<button class="calendar-event" data-action="editShow" data-id="${esc(x.id)}" title="${esc(x.location)}"><b>${esc(x.time)} · ${esc(x.name)}</b><small>${esc(x.location)}</small></button>`).join('')}</div>`;
+        const date=dateKey(day), shows=monthShows.filter(show => show.date === date);
+        cells+=`<div class="calendar-day ${date===today()?'today':''} ${shows.length ? 'has-events' : ''}"><time datetime="${date}">${day}</time>${shows.map(x=>`<button class="calendar-event" data-action="editShow" data-id="${esc(x.id)}" title="${esc(x.location)}"><b>${esc(x.time)} · ${esc(x.name)}</b><small>${esc(x.location)}</small></button>`).join('')}</div>`;
     }
-    $('#calendar-view').innerHTML=`<div class="calendar-toolbar"><button data-month="-1" aria-label="Previous month">←</button><h3>${calendarMonth.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</h3><button data-month="1" aria-label="Next month">→</button><button data-month="today">Today</button></div><div class="calendar-grid">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="weekday">${d}</div>`).join('')}${cells}</div>`;
+    $('#calendar-view').innerHTML=`<div class="calendar-toolbar"><button data-month="-1" aria-label="Previous month">←</button><h3>${calendarMonth.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</h3><button data-month="1" aria-label="Next month">→</button><button data-month="today">Today</button></div><div class="calendar-grid">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="weekday">${d}</div>`).join('')}${cells}</div><section class="calendar-agenda" aria-label="Shows this month"><h4>Shows this month</h4>${agenda || '<p>No shows scheduled this month.</p>'}</section>`;
 }
 $('#calendar-view').onclick=e=> {
     const month=e.target.closest('[data-month]');
@@ -354,6 +373,7 @@ catch (e) {
 } e.target.value = ''; };
 $('#csv').onclick = () => { const data = tab === 'show' || tab === 'calendar' ? state.shows || [] : tab === 'inventory' ? state.cards.map(c=>({...c,remaining:remaining(state,c)})) : state[tab]; if (!data.length)
     return alert('No records to export.'); const fields = [...new Set(data.flatMap(r => Object.keys(r)))].filter(k => k !== 'ask'), cell = v => '"' + String(v ?? '').replace(/^[=+@-]/, "'$&").replaceAll('"', '""') + '"'; download([fields.map(cell).join(','), ...data.map(r => fields.map(k => cell(r[k])).join(','))].join('\r\n'), 'mc-sports-' + tab + '-cents.csv', 'text/csv'); $('#notice').textContent = 'CSV exported. Monetary fields are in cents.'; };
+compactChart.addEventListener('change', () => { if (tab === 'home') render(); });
 render();
 
 
