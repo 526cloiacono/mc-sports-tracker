@@ -2,6 +2,20 @@ export const uid = () => typeof crypto.randomUUID === 'function' ? crypto.random
 export const cents = v => Math.round(Number(v) * 100);
 export const remaining = (s, c) => c.qty - s.sales.filter(x => x.cardId === c.id).reduce((n, x) => n + x.qty, 0);
 export function totals(s) { const revenue = s.sales.reduce((n, x) => n + x.total, 0), cost = s.sales.reduce((n, x) => n + x.cost, 0), fees = s.sales.reduce((n, x) => n + x.fees, 0), expenses = s.expenses.reduce((n, x) => n + x.amount, 0); return { revenue, cost, fees, expenses, profit: revenue - cost - fees - expenses, inventory: s.cards.reduce((n, c) => n + remaining(s, c) * c.cost, 0), quantity: s.cards.reduce((n, c) => n + remaining(s, c), 0) }; }
+// Selling fees are displayed in Expenses, but the sale remains their source.
+export function expenseEntries(state) {
+    const manual = state.expenses.map(expense => ({...expense, source: 'manual'}));
+    const saleFees = state.sales.filter(sale => sale.fees > 0).map(sale => ({
+        id: sale.id,
+        name: sale.name,
+        category: 'Selling fees & shipping',
+        date: sale.date,
+        amount: sale.fees,
+        ...(sale.showId ? {showId: sale.showId} : {}),
+        source: 'sale'
+    }));
+    return [...manual, ...saleFees];
+}
 export function addSale(s, cardId, qty, total, fees, date, showId) { const c = s.cards.find(x => x.id === cardId); if (!c || !Number.isInteger(qty) || qty < 1 || qty > remaining(s, c))
     throw Error('Choose an available quantity.'); if (![total, fees].every(x => Number.isSafeInteger(x) && x >= 0))
     throw Error('Enter valid nonnegative amounts.'); s.sales.push({ id: uid(), cardId, qty, total, fees, cost: qty * c.cost, date, name: c.name, details: c.details, cert: c.cert, ...(showId ? {showId} : {}) });

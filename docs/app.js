@@ -1,5 +1,5 @@
 import {renderProfitChart} from './profit-chart.js?v=20261107-mobile1';
-import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity, inventoryAge, showRecap, removeShow } from './model.js?v=20261108-launch1';
+import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity, inventoryAge, showRecap, removeShow, expenseEntries } from './model.js?v=20261108-fees1';
 const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [], shows: [] });
 const compactChart = window.matchMedia('(max-width: 560px)');
 let state = fresh(), tab = 'home', mode, id;
@@ -211,21 +211,21 @@ function render() {
         ['Net profit', money(period.profit), 'After cost, fees & expenses'],
         ['Inventory value', money(all.inventory), 'At purchase cost · unsold cards'],
         ['Cards on hand', all.quantity, 'Total individual cards owned'],
-        ['Business expenses', money(period.expenses), 'Excludes card costs & selling fees']
+        ['Total expenses', money(period.expenses + period.fees), 'Includes selling fees · excludes card costs']
     ].map((x, i) => `<div class="stat"><div class="stat-top"><label>${x[0]}</label><span class="stat-icon">${icon(['profit','inventory','quantity','expenses'][i])}</span></div><strong class="${i === 0 ? (period.profit < 0 ? 'negative' : 'positive') : ''}">${x[1]}</strong><small>${x[2]}</small></div>`).join('');
     if (isHome) renderProfitChart($('#profit-chart'),state,from,to,compactChart.matches);
     $('#insights').innerHTML = `<span><b>${insights.transactions}</b> ${insights.transactions === 1 ? 'sale' : 'sales'} recorded</span><span><b>${insights.quantity}</b> cards sold</span><span><b>${insights.quantity ? money(insights.averageProfit) : '—'}</b> average profit / sold card <small>before business expenses</small></span>`;
     $('#crumb').textContent = tab === 'show' ? 'SHOWS' : tab.toUpperCase();
     $('#page-kicker').textContent = {home:'OVERVIEW',inventory:'01 / THE COLLECTION',show:'02 / ON THE ROAD',sales:'04 / YOUR TRACK RECORD',expenses:'05 / THE DETAILS'}[tab];
     $('#section-title').textContent = { home: 'Home', inventory: 'Your inventory', show: 'Your shows', sales: 'Sales history', expenses: 'Business expenses' }[tab];
-    $('#section-sub').textContent = { home: 'Your collection at a glance.', inventory: 'A home for every card in your collection.', show: 'Plan your next show and keep the details together.', sales: 'Every sale, with its true profit.', expenses: 'Table fees, supplies, travel, and more.' }[tab];
+    $('#section-sub').textContent = { home: 'Your collection at a glance.', inventory: 'A home for every card in your collection.', show: 'Plan your next show and keep the details together.', sales: 'Every sale, with its true profit.', expenses: 'Selling fees, table fees, supplies, travel, and more.' }[tab];
     $('#add').textContent = tab === 'expenses' ? '＋ Add expense' : isShows ? '＋ Add show' : '＋ Add card';
     $('#add').hidden = tab === 'sales';
     $('#filter').hidden = !isCards;
     $('#sort').hidden = !isCards;
     $('#status-filter').hidden = tab !== 'inventory';
     $('#show-summary').hidden = $('#print-show').hidden = $('#clear-show').hidden = true;
-    $('#search').placeholder = tab === 'show' ? 'Search shows, locations or notes…' : 'Search player, set, card # or cert…';
+    $('#search').placeholder = tab === 'show' ? 'Search shows, locations or notes…' : tab === 'expenses' ? 'Search expenses or categories…' : 'Search player, set, card # or cert…';
     document.querySelectorAll('nav button').forEach(button => {
         button.classList.toggle('active', button.dataset.tab === tab);
         button.setAttribute('aria-pressed', String(button.dataset.tab === tab));
@@ -257,9 +257,17 @@ function render() {
     }
     if (tab === 'expenses') {
         heads = ['Expense', 'Category', 'Date', 'Amount', 'Actions'];
-        const expenses = state.expenses.filter(x => inPeriod(x.date, from, to) && (x.name + ' ' + x.category).toLowerCase().includes(q)).slice().sort((a, b) => b.date.localeCompare(a.date));
+        const expenses = expenseEntries(state).filter(x => inPeriod(x.date, from, to) && (x.name + ' ' + x.category).toLowerCase().includes(q)).slice().sort((a, b) => b.date.localeCompare(a.date));
         count = expenses.length;
-        rows = expenses.map(x => `<tr><td><b>${esc(x.name)}</b>${showTag(x.showId)}</td><td>${esc(x.category)}</td><td>${esc(x.date)}</td><td>${money(x.amount)}</td><td class="actions"><button data-action="tagExpense" data-id="${esc(x.id)}">Tag show</button><button data-action="deleteExpense" data-id="${esc(x.id)}">Remove</button></td></tr>`).join('');
+        rows = expenses.map(expense => {
+            const actions = expense.source === 'sale'
+                ? '<small>Recorded with sale</small>'
+                : `<button data-action="tagExpense" data-id="${esc(expense.id)}">Tag show</button>
+                   <button data-action="deleteExpense" data-id="${esc(expense.id)}">Remove</button>`;
+            return `<tr><td><b>${esc(expense.name)}</b>${showTag(expense.showId)}</td>
+                <td>${esc(expense.category)}</td><td>${esc(expense.date)}</td><td>${money(expense.amount)}</td>
+                <td class="actions">${actions}</td></tr>`;
+        }).join('');
     }
     if (tab === 'show') {
         const shows = (state.shows || []).filter(x => `${x.name} ${x.location} ${x.notes}`.toLowerCase().includes(q)).slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
@@ -384,7 +392,7 @@ function open(kind, recordId) {
         $('#fields').innerHTML = input('name','Show name',show?.name || '', 'text','required maxlength="120"') + input('location','Location',show?.location || '', 'text','required maxlength="200"') + input('date','Date',show?.date || today(),'date','required') + input('time','Time',show?.time || '09:00','time','required') + `<label class="wide">Notes<textarea name="notes" rows="4" maxlength="2000">${esc(show?.notes || '')}</textarea></label>`;
     }
     if (kind === 'expense')
-        $('#fields').innerHTML = input('name', 'Expense description', '', 'text', 'required maxlength="120"') + `<label>Category<select name="category"><option>Show / table fees</option><option>Supplies</option><option>Travel</option><option>Subscriptions</option><option>Other</option></select></label>` + input('amount', 'Amount ($)', '', 'number', 'required min="0.01" step="0.01"') + input('date', 'Date', today(), 'date', 'required') + '<small class="wide">Do not enter card purchase costs or selling fees here if already included in a card or sale.</small>';
+        $('#fields').innerHTML = input('name', 'Expense description', '', 'text', 'required maxlength="120"') + `<label>Category<select name="category"><option>Show / table fees</option><option>Supplies</option><option>Travel</option><option>Subscriptions</option><option>Other</option></select></label>` + input('amount', 'Amount ($)', '', 'number', 'required min="0.01" step="0.01"') + input('date', 'Date', today(), 'date', 'required') + '<small class="wide">Selling fees entered on a sale appear here automatically. Enter other business expenses here.</small>';
     if ((kind === 'sell' || kind === 'expense') && state.shows?.length) {
         $('#fields').insertAdjacentHTML('beforeend', showPicker());
     }
@@ -502,7 +510,7 @@ $('#file').onchange = async (e) => { try {
 catch (e) {
     alert(e.message);
 } e.target.value = ''; };
-$('#csv').onclick = () => { const data = tab === 'show' ? state.shows || [] : tab === 'inventory' ? state.cards.map(c=>({...c,remaining:remaining(state,c)})) : state[tab]; if (!data.length)
+$('#csv').onclick = () => { const data = tab === 'show' ? state.shows || [] : tab === 'inventory' ? state.cards.map(c=>({...c,remaining:remaining(state,c)})) : tab === 'expenses' ? expenseEntries(state) : state[tab]; if (!data.length)
     return alert('No records to export.'); const fields = [...new Set(data.flatMap(r => Object.keys(r)))].filter(k => k !== 'ask'), cell = v => '"' + String(v ?? '').replace(/^[=+@-]/, "'$&").replaceAll('"', '""') + '"'; download([fields.map(cell).join(','), ...data.map(r => fields.map(k => cell(r[k])).join(','))].join('\r\n'), 'mc-sports-' + tab + '-cents.csv', 'text/csv'); $('#notice').textContent = 'CSV exported. Monetary fields are in cents.'; };
 compactChart.addEventListener('change', () => { if (tab === 'home') render(); });
 render();
