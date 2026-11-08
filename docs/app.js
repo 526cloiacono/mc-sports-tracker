@@ -1,5 +1,5 @@
 import {renderProfitChart} from './profit-chart.js?v=20261107-mobile1';
-import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity, inventoryAge, showRecap, removeShow, expenseEntries } from './model.js?v=20261108-fees1';
+import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity, inventoryAge, showRecap, removeShow, expenseEntries, cardMilestone } from './model.js?v=20261108-milestones1';
 const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [], shows: [] });
 const compactChart = window.matchMedia('(max-width: 560px)');
 let state = fresh(), tab = 'home', mode, id;
@@ -18,7 +18,7 @@ const iconPaths = {
  quantity:'<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'
 };
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name] || iconPaths.inventory}</svg>`;
-for (const button of document.querySelectorAll('nav button')) button.innerHTML=icon(button.dataset.tab)+`<span>${button.textContent}</span>`;
+for (const button of document.querySelectorAll('nav button[data-tab]')) button.innerHTML=icon(button.dataset.tab)+`<span>${button.textContent}</span>`;
 function lock() {
     const blocked = !ready || busy;
     for (const selector of ['#add','#calendar-add','#restore','#import-local','#clear-show','#calendar-view .calendar-event[data-action]','#content button','#form button[type="submit"]'])
@@ -43,6 +43,9 @@ async function loadAccount(user) {
     account = user; ready = false; revision = null; state = fresh();
     guideActive = false;
     $('#show-recap').close();
+    $('#card-milestone').close();
+    $('#reviews-dialog').close();
+    $('#review-form').reset();
     $('#modal').close(); $('#print-sheet').innerHTML=''; render(); lock();
     showWorkspace(user);
     $('#auth-form').hidden = !!user;
@@ -74,6 +77,98 @@ async function loadAccount(user) {
     finally { if(token === generation) lock(); }
 }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const milestoneDialog = $('#card-milestone');
+const reviewsDialog = $('#reviews-dialog');
+const reviewForm = $('#review-form');
+const reviewStatus = $('#review-status');
+let reviewRequest = 0;
+
+$('#milestone-socials').replaceChildren(
+    ...Array.from(document.querySelectorAll('.social-links a'), link => link.cloneNode(true))
+);
+
+function openMilestone(count) {
+    $('#milestone-title').textContent = `${count.toLocaleString()} cards added!`;
+    milestoneDialog.showModal();
+}
+$('#close-milestone').onclick = $('#milestone-later').onclick = () => milestoneDialog.close();
+$('#milestone-review').onclick = () => {
+    milestoneDialog.close();
+    openReviews(true);
+};
+
+function showReviewForm() {
+    if (!account) {
+        reviewsDialog.close();
+        $('#signin-dialog').showModal();
+        return;
+    }
+    reviewForm.hidden = false;
+    $('#write-review').hidden = true;
+    reviewForm.elements.rating.focus();
+}
+
+async function openReviews(compose = false) {
+    const request = ++reviewRequest;
+    $('#review-list').textContent = 'Loading reviews…';
+    reviewStatus.textContent = '';
+    reviewForm.hidden = true;
+    $('#write-review').hidden = false;
+    reviewsDialog.showModal();
+    if (compose) showReviewForm();
+    try {
+        const {data, error} = await client.from('tracker_reviews')
+            .select('rating,body').order('created_at', {ascending: false}).limit(20);
+        if (request !== reviewRequest || !reviewsDialog.open) return;
+        if (error) throw error;
+        $('#review-list').innerHTML = data.length
+            ? data.map(review => `
+                <article class="tracker-review">
+                    <span class="review-stars" role="img" aria-label="${review.rating} out of 5 stars">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</span>
+                    <small>Anonymous</small>
+                    <p>${esc(review.body)}</p>
+                </article>`).join('')
+            : '<p>No published reviews yet.</p>';
+    } catch {
+        if (request === reviewRequest && reviewsDialog.open) $('#review-list').textContent = 'Reviews are unavailable right now. Try again later.';
+    }
+}
+$('#open-reviews').onclick = () => openReviews();
+$('#write-review').onclick = showReviewForm;
+$('#close-reviews').onclick = () => reviewsDialog.close();
+
+reviewForm.onsubmit = async event => {
+    event.preventDefault();
+    if (!account || reviewForm.querySelector('button').disabled) return;
+    const {rating, body} = Object.fromEntries(new FormData(reviewForm));
+    const comment = body.trim();
+    if (comment.length < 3) {
+        reviewStatus.textContent = 'Enter a short comment.';
+        return;
+    }
+    const submit = reviewForm.querySelector('button');
+    const request = reviewRequest;
+    submit.disabled = true;
+    reviewStatus.textContent = 'Submitting review…';
+    try {
+        const {error} = await client.from('tracker_reviews').insert({rating: Number(rating), body: comment});
+        if (request !== reviewRequest || !reviewsDialog.open) return;
+        if (error) {
+            reviewStatus.textContent = error.code === '23505'
+                ? 'You’ve already submitted a review.'
+                : 'Could not submit your review. Please try again.';
+            return;
+        }
+        reviewForm.reset();
+        reviewForm.hidden = true;
+        reviewStatus.textContent = 'Thanks! Your review will appear anonymously after approval.';
+    } catch {
+        if (request === reviewRequest && reviewsDialog.open) reviewStatus.textContent = 'Could not submit your review. Please try again.';
+    } finally {
+        submit.disabled = false;
+    }
+};
+
 const money = n => (n / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const today = () => new Date().toLocaleDateString('en-CA');
 async function save(next) {
@@ -226,7 +321,7 @@ function render() {
     $('#status-filter').hidden = tab !== 'inventory';
     $('#show-summary').hidden = $('#print-show').hidden = $('#clear-show').hidden = true;
     $('#search').placeholder = tab === 'show' ? 'Search shows, locations or notes…' : tab === 'expenses' ? 'Search expenses or categories…' : 'Search player, set, card # or cert…';
-    document.querySelectorAll('nav button').forEach(button => {
+    document.querySelectorAll('nav button[data-tab]').forEach(button => {
         button.classList.toggle('active', button.dataset.tab === tab);
         button.setAttribute('aria-pressed', String(button.dataset.tab === tab));
     });
@@ -419,6 +514,7 @@ $('#form').onsubmit = async e => {
     e.preventDefault();
     try {
         const d = Object.fromEntries(new FormData(e.target)), next = structuredClone(state);
+        let milestone = 0;
         if (mode === 'card' || mode === 'edit') d.grading = d.cardType === 'Raw' ? 'Raw' : d.grading;
         if (mode === 'card' || mode === 'edit') {
             const old = next.cards.find(x => x.id === id);
@@ -433,8 +529,12 @@ $('#form').onsubmit = async e => {
                 c.showQty = Math.min(old.showQty || 0, c.qty - next.sales.filter(x => x.cardId === id).reduce((n, x) => n + x.qty, 0));
                 Object.assign(old, c);
             }
-            else
+            else {
+                const progress = cardMilestone(next, c.qty);
+                next.cardsAdded = progress.cardsAdded;
+                milestone = progress.milestone;
                 next.cards.push(c);
+            }
         }
         if (mode === 'showEvent' || mode === 'editShow') {
             const show = {id: id || uid(),name:d.name.trim(),location:d.location.trim(),date:d.date,time:d.time,notes:d.notes.trim()};
@@ -457,6 +557,7 @@ $('#form').onsubmit = async e => {
         }
         await save(next);
         $('#modal').close();
+        if (milestone) openMilestone(milestone);
         if (mode === 'sell' && guideActive && state.sales.length === 1) {
             tab = 'home';
             render();
@@ -488,7 +589,7 @@ $('#hero-add').onclick = () => account ? open('card') : $('#signin-dialog').show
 $('#hero-inventory').onclick = () => { tab='inventory'; $('#search').value=''; render(); };
 $('#close').onclick = () => $('#modal').close();
 $('.brand').onclick = e => { e.preventDefault(); tab='home'; $('#search').value=''; render(); };
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => { tab = b.dataset.tab; $('#search').value = ''; render(); });
+document.querySelectorAll('nav button[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; $('#search').value = ''; render(); });
 $('#from').onchange = render;
 $('#to').onchange = render;
 $('#clear-dates').onclick = () => { $('#from').value = ''; $('#to').value = ''; render(); };

@@ -2,6 +2,13 @@ export const uid = () => typeof crypto.randomUUID === 'function' ? crypto.random
 export const cents = v => Math.round(Number(v) * 100);
 export const remaining = (s, c) => c.qty - s.sales.filter(x => x.cardId === c.id).reduce((n, x) => n + x.qty, 0);
 export function totals(s) { const revenue = s.sales.reduce((n, x) => n + x.total, 0), cost = s.sales.reduce((n, x) => n + x.cost, 0), fees = s.sales.reduce((n, x) => n + x.fees, 0), expenses = s.expenses.reduce((n, x) => n + x.amount, 0); return { revenue, cost, fees, expenses, profit: revenue - cost - fees - expenses, inventory: s.cards.reduce((n, c) => n + remaining(s, c) * c.cost, 0), quantity: s.cards.reduce((n, c) => n + remaining(s, c), 0) }; }
+export function cardMilestone(state, quantity) {
+    const previous = state.cardsAdded ?? state.cards.reduce((sum, card) => sum + card.qty, 0);
+    const cardsAdded = previous + quantity;
+    const milestone = Math.floor(cardsAdded / 25) * 25;
+    return {cardsAdded, milestone: milestone > previous ? milestone : 0};
+}
+
 // Selling fees are displayed in Expenses, but the sale remains their source.
 export function expenseEntries(state) {
     const manual = state.expenses.map(expense => ({...expense, source: 'manual'}));
@@ -22,6 +29,8 @@ export function addSale(s, cardId, qty, total, fees, date, showId) { const c = s
     if (c.showQty !== undefined) c.showQty = Math.min(c.showQty, remaining(s, c)); }
 export function validate(s) { if (!s || s.version !== 1 || !['cards', 'sales', 'expenses'].every(k => Array.isArray(s[k])))
     throw Error('Invalid MC Sports backup.');
+    if (s.cardsAdded !== undefined && (!Number.isSafeInteger(s.cardsAdded) || s.cardsAdded < 0))
+        throw Error('Invalid cards added count.');
     if (s.shows !== undefined && !Array.isArray(s.shows)) throw Error('Invalid shows.');
     for (const show of s.shows || []) {
         if (!show || typeof show.id !== 'string' || typeof show.name !== 'string' || !show.name.trim() || typeof show.location !== 'string' || !show.location.trim() || !validShowDate(show.date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(show.time) || typeof show.notes !== 'string') throw Error('Enter a show name, location, valid date and time.');

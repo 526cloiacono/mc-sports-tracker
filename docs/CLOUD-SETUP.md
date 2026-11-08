@@ -25,3 +25,9 @@ Remaining launch setup:
 2. Set the Supabase Auth Site URL to the final HTTPS app URL and allow that exact URL in redirect settings. app.js currently pins the GitHub Pages URL in redirectTo; update it during migration so confirmation/reset links return to the new host. Sessions saved on the old browser origin do not transfer; users sign in again. Cloud portfolio data remains in the same Supabase project.
 3. Configure a verified sender/domain and custom SMTP in Supabase Authentication. Keep provider credentials out of the repository and frontend. Keep email confirmation enabled. Test registration, confirmation, login, reset, and recovery using an owner-approved test address. The connector currently provides no Auth configuration/SMTP management capability; use the Supabase dashboard.
 4. Verify the intended public brand/domain and review the published policies for the operator's jurisdiction and practices. An exact purchased domain has not been supplied.
+
+## Anonymous reviews
+
+The star in the tracker opens approved reviews. Signed-in users can submit one rating and comment per account. The database stores the account ID for duplicate prevention and account deletion. Public API readers can only see approved reviews and cannot select account IDs or approve submissions.
+
+Moderate in the Supabase Table Editor under public.tracker_reviews. Read the comment, remove reviews that reveal private information, and set approved to true for reviews that are ready to publish. Do not approve or reject based on the star rating. Account deletion removes the associated review automatically.

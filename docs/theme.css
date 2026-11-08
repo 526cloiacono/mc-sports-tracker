@@ -327,3 +327,54 @@ footer .legal-links{height:auto;min-height:0;align-items:center;justify-content:
 .shows-calendar .panel-top { flex-wrap: nowrap; }
 .shows-calendar .panel-top > div { min-width: 0; }
 #calendar-add { align-self: flex-start; }
+
+aside nav #open-reviews {
+    flex: 0 0 36px;
+    justify-content: center;
+    padding: 4px;
+    font-size: 21px;
+    line-height: 1;
+}
+#card-milestone, #reviews-dialog {
+    width: min(480px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+}
+#card-milestone p, .review-intro, #review-form p, #review-status {
+    color: #52617a;
+    line-height: 1.6;
+}
+#milestone-socials {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 16px 0 8px;
+}
+#milestone-socials .social-card { overflow-wrap: anywhere; }
+#milestone-later { display: block; margin: 14px auto 0; min-height: 36px; }
+#review-list { margin: 14px 0; }
+.tracker-review {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px;
+    margin: 8px 0;
+}
+.tracker-review p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
+.tracker-review small { margin-left: 8px; color: #52617a; }
+.review-stars { color: #876019; letter-spacing: 2px; }
+#review-form label { display: grid; gap: 6px; margin-top: 12px; }
+#review-form select, #review-form textarea {
+    width: 100%;
+    min-height: 44px;
+    font: inherit;
+    font-size: 16px;
+    padding: 9px;
+    border: 1px solid var(--line);
+}
+#review-form textarea { resize: vertical; }
+@media (max-width: 560px) {
+    aside nav { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+    aside nav button[data-tab] { grid-column: span 4; }
+    aside nav button[data-tab]:nth-child(n+4) { grid-column: span 5; }
+    aside nav #open-reviews { grid-column: span 2; }
+}
