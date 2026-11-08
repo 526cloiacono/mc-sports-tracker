@@ -244,3 +244,62 @@ footer .legal-links{height:auto;min-height:0;align-items:center;justify-content:
     border-color: #747b87;
     color: #f0f2f5;
 }
+
+.quick-start {
+    margin: 0 0 22px;
+    padding: 20px 24px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+}
+.quick-start-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 12px;
+}
+.quick-start-head button { color: var(--muted); }
+.quick-start ol {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 0;
+    list-style-position: inside;
+}
+.quick-start li {
+    padding: 10px;
+    border-radius: 8px;
+    color: #53617a;
+    background: #f3f5fa;
+    font-size: 12px;
+}
+.quick-start li[aria-current="step"] {
+    background: #e6edff;
+    color: #284da7;
+    font-weight: 700;
+}
+.quick-start > p, .recap-note { color: #53617a; font-size: 13px; line-height: 1.55; }
+.inventory-age { color: #365aab; font-weight: 650; }
+#show-recap { max-height: calc(100dvh - 24px); }
+.recap-show { line-height: 1.65; overflow-wrap: anywhere; }
+.recap-totals { margin: 18px 0; }
+.recap-totals > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+}
+.recap-totals dd { margin: 0; font-weight: 700; text-align: right; }
+.recap-totals > div:last-child {
+    padding: 12px;
+    background: #edf2ff;
+    border: 0;
+    border-radius: 8px;
+    font-weight: 700;
+}
+@media (max-width: 560px) {
+    .quick-start { padding: 16px; }
+    .quick-start ol { grid-template-columns: 1fr; }
+    .quick-start button { min-height: 44px; }
+}

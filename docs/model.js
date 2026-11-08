@@ -2,15 +2,19 @@ export const uid = () => typeof crypto.randomUUID === 'function' ? crypto.random
 export const cents = v => Math.round(Number(v) * 100);
 export const remaining = (s, c) => c.qty - s.sales.filter(x => x.cardId === c.id).reduce((n, x) => n + x.qty, 0);
 export function totals(s) { const revenue = s.sales.reduce((n, x) => n + x.total, 0), cost = s.sales.reduce((n, x) => n + x.cost, 0), fees = s.sales.reduce((n, x) => n + x.fees, 0), expenses = s.expenses.reduce((n, x) => n + x.amount, 0); return { revenue, cost, fees, expenses, profit: revenue - cost - fees - expenses, inventory: s.cards.reduce((n, c) => n + remaining(s, c) * c.cost, 0), quantity: s.cards.reduce((n, c) => n + remaining(s, c), 0) }; }
-export function addSale(s, cardId, qty, total, fees, date) { const c = s.cards.find(x => x.id === cardId); if (!c || !Number.isInteger(qty) || qty < 1 || qty > remaining(s, c))
+export function addSale(s, cardId, qty, total, fees, date, showId) { const c = s.cards.find(x => x.id === cardId); if (!c || !Number.isInteger(qty) || qty < 1 || qty > remaining(s, c))
     throw Error('Choose an available quantity.'); if (![total, fees].every(x => Number.isSafeInteger(x) && x >= 0))
-    throw Error('Enter valid nonnegative amounts.'); s.sales.push({ id: uid(), cardId, qty, total, fees, cost: qty * c.cost, date, name: c.name, details: c.details, cert: c.cert });
+    throw Error('Enter valid nonnegative amounts.'); s.sales.push({ id: uid(), cardId, qty, total, fees, cost: qty * c.cost, date, name: c.name, details: c.details, cert: c.cert, ...(showId ? {showId} : {}) });
     if (c.showQty !== undefined) c.showQty = Math.min(c.showQty, remaining(s, c)); }
 export function validate(s) { if (!s || s.version !== 1 || !['cards', 'sales', 'expenses'].every(k => Array.isArray(s[k])))
     throw Error('Invalid MC Sports backup.');
     if (s.shows !== undefined && !Array.isArray(s.shows)) throw Error('Invalid shows.');
     for (const show of s.shows || []) {
         if (!show || typeof show.id !== 'string' || typeof show.name !== 'string' || !show.name.trim() || typeof show.location !== 'string' || !show.location.trim() || !validShowDate(show.date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(show.time) || typeof show.notes !== 'string') throw Error('Enter a show name, location, valid date and time.');
+    }
+    const showIds = new Set((s.shows || []).map(show => show.id));
+    for (const record of [...s.sales, ...s.expenses]) {
+        if (record.showId !== undefined && !showIds.has(record.showId)) throw Error('Choose an existing show.');
     }
     const ids = new Set(); for (const x of [...s.cards, ...s.sales, ...s.expenses, ...(s.shows || [])]) {
     if (typeof x.id !== 'string' || ids.has(x.id))
@@ -54,6 +58,28 @@ export function showTotals(s) {
     }, { quantity: 0, cost: 0, entries: 0 });
 }
 
+export function inventoryAge(purchaseDate, today) {
+    if (!validShowDate(purchaseDate) || !validShowDate(today) || purchaseDate > today) return null;
+    return (Date.parse(today) - Date.parse(purchaseDate)) / 86400000;
+}
+
+export function showRecap(s, showId) {
+    const sales = s.sales.filter(sale => sale.showId === showId);
+    const expenses = s.expenses.filter(expense => expense.showId === showId);
+    return {
+        ...totals({cards: [], sales, expenses}),
+        saleCount: sales.length,
+        expenseCount: expenses.length
+    };
+}
+
+export function removeShow(s, showId) {
+    s.shows = (s.shows || []).filter(show => show.id !== showId);
+    for (const record of [...s.sales, ...s.expenses]) {
+        if (record.showId === showId) delete record.showId;
+    }
+}
+
 export const isCertSearch = (s, query = '') => !!query.trim() && s.cards.some(c => c.cert && c.cert.toLowerCase().includes(query.trim().toLowerCase()));
 
 export function selectCards(s, { query = '', grading = 'all', status = 'available', sort = 'recent', showOnly = false } = {}) {
@@ -71,7 +97,12 @@ export function selectCards(s, { query = '', grading = 'all', status = 'availabl
         name: (a, b) => a.name.localeCompare(b.name),
         'cost-high': (a, b) => b.cost - a.cost,
         'cost-low': (a, b) => a.cost - b.cost,
-        quantity: (a, b) => remaining(s, b) - remaining(s, a)
+        quantity: (a, b) => remaining(s, b) - remaining(s, a),
+        oldest: (a, b) => {
+            const aDate = validShowDate(a.purchaseDate) ? a.purchaseDate : '9999-99-99';
+            const bDate = validShowDate(b.purchaseDate) ? b.purchaseDate : '9999-99-99';
+            return aDate.localeCompare(bDate);
+        }
     };
     return cards.sort(comparators[sort] || comparators.recent);
 }

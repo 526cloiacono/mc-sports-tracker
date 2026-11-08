@@ -1,10 +1,11 @@
 import {renderProfitChart} from './profit-chart.js?v=20261107-mobile1';
-import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity } from './model.js';
+import { uid, cents, remaining, totals, addSale, validate, inPeriod, periodTotals, selectCards, saleInsights, matchingCardQuantity, inventoryAge, showRecap, removeShow } from './model.js?v=20261108-launch1';
 const $ = s => document.querySelector(s), key = 'cardledger-v1', fresh = () => ({ version: 1, cards: [], sales: [], expenses: [], shows: [] });
 const compactChart = window.matchMedia('(max-width: 560px)');
 let state = fresh(), tab = 'home', mode, id;
 let calendarMonth = new Date(new Date().getFullYear(),new Date().getMonth(),1);
 let calendarRefreshTimer;
+let guideActive = false;
 let account = null, revision = null, ready = false, busy = false, generation = 0;
 import { client, loadPortfolio, writePortfolio } from './cloud.js';
 const iconPaths = {
@@ -41,6 +42,8 @@ function showWorkspace(user) {
 async function loadAccount(user) {
     const token = ++generation;
     account = user; ready = false; revision = null; state = fresh();
+    guideActive = false;
+    $('#show-recap').close();
     $('#modal').close(); $('#print-sheet').innerHTML=''; render(); lock();
     showWorkspace(user);
     $('#auth-form').hidden = !!user;
@@ -63,6 +66,9 @@ async function loadAccount(user) {
         const row = await loadPortfolio(user.id);
         if(token !== generation) return;
         state = row ? validate(row.data) : fresh(); revision = row?.revision ?? null; ready = true;
+        const guideStatus = guidePreference();
+        guideActive = guideStatus === 'started' || (!guideStatus && !state.sales.length);
+        if (guideActive) guidePreference('started');
         $('#cloud-status').textContent='Connected · records are private to your account';
         render();
     } catch(e) { if(token === generation) $('#cloud-status').textContent='Could not load cloud records: '+e.message; }
@@ -87,6 +93,98 @@ async function save(next) {
         throw e;
     } finally { busy = false; lock(); }
 }
+function guidePreference(value) {
+    if (!account) return null;
+    const storageKey = `mc-sports-quick-start:${account.id}`;
+    try {
+        if (value) localStorage.setItem(storageKey, value);
+        return localStorage.getItem(storageKey);
+    } catch {
+        return null;
+    }
+}
+
+function renderGuide(isHome) {
+    const guide = $('#quick-start');
+    guide.hidden = !isHome || !ready || !guideActive;
+    if (guide.hidden) return;
+
+    const steps = ['Add your first card', 'Record a sale', 'See your profit'];
+    const current = state.sales.length ? 2 : state.cards.length ? 1 : 0;
+    const descriptions = [
+        'Enter the card and what you paid for it.',
+        'Choose a card in Inventory and tap Sell.',
+        'Your profit chart is ready. See what you made after costs, fees, and expenses.'
+    ];
+    guide.innerHTML = `
+        <div class="quick-start-head">
+            <div><p class="panel-kicker">STEP ${current + 1} OF 3</p><h2>Get started</h2></div>
+            <button type="button" data-guide="dismiss">Dismiss</button>
+        </div>
+        <ol>${steps.map((step, index) => `<li ${index === current ? 'aria-current="step"' : ''}>${step}</li>`).join('')}</ol>
+        <p>${descriptions[current]}</p>
+        <button type="button" class="primary" data-guide="${current}">${steps[current]}</button>`;
+}
+
+$('#quick-start').onclick = e => {
+    const action = e.target.closest('[data-guide]')?.dataset.guide;
+    if (action === '0') open('card');
+    if (action === '1') {
+        tab = 'inventory';
+        $('#search').value = '';
+        $('#status-filter').value = 'available';
+        $('#filter').value = 'all';
+        render();
+        $('#section-title').scrollIntoView({block: 'start'});
+    }
+    if (action === '2' || action === 'dismiss') {
+        guideActive = false;
+        guidePreference('done');
+        if (action === '2') {
+            $('#from').value = '';
+            $('#to').value = '';
+            render();
+            $('#profit-chart').scrollIntoView({block: 'start'});
+        } else {
+            renderGuide(true);
+        }
+    }
+};
+
+const showName = showId => (state.shows || []).find(show => show.id === showId)?.name;
+const showTag = showId => showName(showId) ? `<small>Show: ${esc(showName(showId))}</small>` : '';
+
+function showPicker(selected = '') {
+    const shows = (state.shows || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+    return `<label class="wide">Show (optional)
+        <select name="showId"><option value="">No show</option>
+        ${shows.map(show => `<option value="${esc(show.id)}" ${show.id === selected ? 'selected' : ''}>${esc(show.name)} · ${esc(show.date)}</option>`).join('')}
+        </select>
+    </label>`;
+}
+
+function openRecap(showId) {
+    const show = (state.shows || []).find(show => show.id === showId);
+    if (!show) return;
+    const recap = showRecap(state, showId);
+    const lines = [
+        ['Sales revenue', recap.revenue],
+        ['Cost of sold cards', recap.cost],
+        ['Selling fees', recap.fees],
+        ['Show expenses', recap.expenses],
+        ['Net profit', recap.profit]
+    ];
+    $('#recap-details').innerHTML = `
+        <p class="recap-show"><b>${esc(show.name)}</b><br>${esc(show.date)} · ${esc(show.location)}</p>
+        <dl class="recap-totals">
+            ${lines.map(([label, value]) => `<div><dt>${label}</dt><dd>${money(value)}</dd></div>`).join('')}
+        </dl>
+        <p class="recap-note">${recap.saleCount} ${recap.saleCount === 1 ? 'sale' : 'sales'} · ${recap.expenseCount} ${recap.expenseCount === 1 ? 'expense' : 'expenses'} tagged to this show.</p>
+        <p class="recap-note">Assign a show when recording a sale or expense, or use Tag show on an existing record.</p>`;
+    $('#show-recap').showModal();
+}
+$('#close-recap').onclick = () => $('#show-recap').close();
+
 function render() {
     clearTimeout(calendarRefreshTimer);
     queueMicrotask(lock);
@@ -104,6 +202,7 @@ function render() {
     const isCards = tab === 'inventory';
     const isEvents = tab === 'show' || tab === 'calendar';
     const isHome = tab === 'home';
+    renderGuide(isHome);
     for (const selector of ['.heading','#stats','#profit-chart','#sales-summary','#insights','.formula']) $(selector).hidden = !isHome;
     $('.report-controls').hidden = !['home','sales','expenses'].includes(tab);
     $('.panel').hidden = isHome;
@@ -140,13 +239,16 @@ function render() {
         const cards = selectCards(state, { query: q, grading, status: $('#status-filter').value,
             sort: $('#sort').value });
         count = cards.length;
+        const inventoryDate = today();
         heads = ['Card / player', 'Grade / cert', 'Purchased', 'Owned', 'Cost / card', 'Actions'];
         rows = cards.map(c => {
             const available = remaining(state, c);
+            const age = available > 0 ? inventoryAge(c.purchaseDate, inventoryDate) : null;
+            const ageLabel = age === null ? '' : age === 0 ? 'Purchased today' : `${age} ${age === 1 ? 'day' : 'days'} in stock`;
             const owned = state.cards.filter(x => x.name.toLowerCase() === c.name.toLowerCase() && x.details.toLowerCase() === c.details.toLowerCase() && x.grading === c.grading && x.grade === c.grade).reduce((n, x) => n + remaining(state, x), 0);
             return `<tr><td><b>${esc(c.name)}</b><small>${esc(c.details) || 'No set details'}</small>${c.notes ? `<small>${esc(c.notes)}</small>` : ''}</td>
                 <td><span class="badge">${esc(c.grading)} ${esc(c.grade)}</span><small>${c.cert ? '#' + esc(c.cert) : 'Ungraded'}</small></td>
-                <td>${esc(c.purchaseDate) || 'Date not recorded'}<small>${c.qty} purchased in this entry</small></td><td><b>${available}</b><small>${owned} matching in collection</small></td><td>${money(c.cost)}</td>
+                <td>${esc(c.purchaseDate) || 'Date not recorded'}<small>${c.qty} purchased in this entry</small>${ageLabel ? `<small class="inventory-age">${ageLabel}</small>` : ''}</td><td><b>${available}</b><small>${owned} matching in collection</small></td><td>${money(c.cost)}</td>
                 <td class="actions">${available > 0 ? `<button data-action="sell" data-id="${esc(c.id)}">Sell</button>` : '<span class="sold-badge">Sold out</span>'}<button data-action="edit" data-id="${esc(c.id)}">Edit</button><button data-action="remove" data-id="${esc(c.id)}">Remove</button></td></tr>`;
         }).join('');
     }
@@ -154,19 +256,19 @@ function render() {
         heads = ['Card', 'Date', 'Qty', 'Sale total', 'Fees', 'Profit', 'Actions'];
         const sales = state.sales.filter(x => inPeriod(x.date, from, to) && `${x.name} ${x.cert} ${x.details || ''}`.toLowerCase().includes(q)).slice().sort((a, b) => b.date.localeCompare(a.date));
         count = sales.length;
-        rows = sales.map(x => `<tr><td><b>${esc(x.name)}</b><small>${esc(x.details || '')}</small><small>${esc(x.cert)}</small></td><td>${esc(x.date)}</td><td>${x.qty}</td><td>${money(x.total)}</td><td>${money(x.fees)}</td><td><b class="${x.total - x.cost - x.fees < 0 ? 'negative' : 'positive'}">${money(x.total - x.cost - x.fees)}</b></td><td><button data-action="undo" data-id="${esc(x.id)}">Undo sale</button></td></tr>`).join('');
+        rows = sales.map(x => `<tr><td><b>${esc(x.name)}</b><small>${esc(x.details || '')}</small><small>${esc(x.cert)}</small>${showTag(x.showId)}</td><td>${esc(x.date)}</td><td>${x.qty}</td><td>${money(x.total)}</td><td>${money(x.fees)}</td><td><b class="${x.total - x.cost - x.fees < 0 ? 'negative' : 'positive'}">${money(x.total - x.cost - x.fees)}</b></td><td class="actions"><button data-action="tagSale" data-id="${esc(x.id)}">Tag show</button><button data-action="undo" data-id="${esc(x.id)}">Undo sale</button></td></tr>`).join('');
     }
     if (tab === 'expenses') {
         heads = ['Expense', 'Category', 'Date', 'Amount', 'Actions'];
         const expenses = state.expenses.filter(x => inPeriod(x.date, from, to) && (x.name + ' ' + x.category).toLowerCase().includes(q)).slice().sort((a, b) => b.date.localeCompare(a.date));
         count = expenses.length;
-        rows = expenses.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.category)}</td><td>${esc(x.date)}</td><td>${money(x.amount)}</td><td><button data-action="deleteExpense" data-id="${esc(x.id)}">Remove</button></td></tr>`).join('');
+        rows = expenses.map(x => `<tr><td><b>${esc(x.name)}</b>${showTag(x.showId)}</td><td>${esc(x.category)}</td><td>${esc(x.date)}</td><td>${money(x.amount)}</td><td class="actions"><button data-action="tagExpense" data-id="${esc(x.id)}">Tag show</button><button data-action="deleteExpense" data-id="${esc(x.id)}">Remove</button></td></tr>`).join('');
     }
     if (tab === 'show') {
         const shows = (state.shows || []).filter(x => `${x.name} ${x.location} ${x.notes}`.toLowerCase().includes(q)).slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
         count = shows.length;
         heads = ['Show', 'Location', 'Date', 'Time', 'Notes', 'Actions'];
-        rows = shows.map(x=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.location)}</td><td>${esc(x.date)}</td><td>${esc(x.time)}</td><td class="show-notes">${esc(x.notes)}</td><td><button data-action="editShow" data-id="${esc(x.id)}">Edit</button><button data-action="deleteShow" data-id="${esc(x.id)}">Remove</button></td></tr>`).join('');
+        rows = shows.map(x=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.location)}</td><td>${esc(x.date)}</td><td>${esc(x.time)}</td><td class="show-notes">${esc(x.notes)}</td><td class="actions"><button data-action="recap" data-id="${esc(x.id)}">Recap</button><button data-action="editShow" data-id="${esc(x.id)}">Edit</button><button data-action="deleteShow" data-id="${esc(x.id)}">Remove</button></td></tr>`).join('');
     }
     if (tab === 'calendar') { renderCalendar(); count = (state.shows || []).filter(x=>x.date.startsWith(`${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth()+1).padStart(2,'0')}`)).length; }
     const matching = isCards ? selectCards(state,{query:q,grading,status:$('#status-filter').value}) : [];
@@ -224,7 +326,7 @@ function open(kind, recordId) {
     id = recordId;
     $('#error').textContent = '';
     let c = state.cards.find(x => x.id === id);
-    $('#modal-title').textContent = { card: 'Add a card', edit: 'Edit card', sell: 'Record a sale', expense: 'Add expense', showEvent: 'Add show', editShow: 'Edit show' }[kind];
+    $('#modal-title').textContent = { card: 'Add a card', edit: 'Edit card', sell: 'Record a sale', expense: 'Add expense', showEvent: 'Add show', editShow: 'Edit show', tagSale: 'Tag sale to a show', tagExpense: 'Tag expense to a show' }[kind];
     if (kind === 'card' || kind === 'edit') {
         $('#fields').innerHTML = `<label>Card type<select name="cardType"><option value="Raw">Raw</option><option value="Graded" ${c && c.grading !== 'Raw' ? 'selected' : ''}>Graded</option></select></label><label>Grading company<select name="grading">${['PSA','SGC','Other'].map(g=>`<option ${c?.grading===g?'selected':''}>${g}</option>`).join('')}</select></label>` + input('cert', 'Cert number', c?.cert || '', 'text', 'maxlength="80"') + input('name', 'Player / card name', c?.name || '', 'text', 'required maxlength="120"') + input('details', 'Year, set, card #, parallel', c?.details || '', 'text', 'maxlength="200"') + input('grade', 'Grade', c?.grade || '', 'text', 'maxlength="30"') + input('qty', 'Quantity purchased', c?.qty || 1, 'number', 'required min="1" step="1"') + input('cost', 'Cost per card ($)', c ? c.cost / 100 : '', 'number', 'required min="0" step="0.01"') + input('purchaseDate', 'Purchase date', c?.purchaseDate || (c ? '' : today()), 'date', c ? '' : 'required') + input('notes', 'Notes', c?.notes || '', 'text', 'maxlength="500"') + '<small class="wide">Each entry is a separate purchase with its own date and cost. You can reuse a cert for another purchase. Add graded slabs one at a time; record sales against the purchase you are selling.</small>';
         // Suggestions are rebuilt from this account's cloud-loaded purchases only.
@@ -286,6 +388,15 @@ function open(kind, recordId) {
     }
     if (kind === 'expense')
         $('#fields').innerHTML = input('name', 'Expense description', '', 'text', 'required maxlength="120"') + `<label>Category<select name="category"><option>Show / table fees</option><option>Supplies</option><option>Travel</option><option>Subscriptions</option><option>Other</option></select></label>` + input('amount', 'Amount ($)', '', 'number', 'required min="0.01" step="0.01"') + input('date', 'Date', today(), 'date', 'required') + '<small class="wide">Do not enter card purchase costs or selling fees here if already included in a card or sale.</small>';
+    if ((kind === 'sell' || kind === 'expense') && state.shows?.length) {
+        $('#fields').insertAdjacentHTML('beforeend', showPicker());
+    }
+    if (kind === 'tagSale' || kind === 'tagExpense') {
+        const records = kind === 'tagSale' ? state.sales : state.expenses;
+        const record = records.find(item => item.id === id);
+        if (!record) return;
+        $('#fields').innerHTML = `<p class="wide">${esc(record.name)} · ${esc(record.date)}</p>` + showPicker(record.showId);
+    }
     if (kind === 'sell') {
         $('#fields').insertAdjacentHTML('beforeend', '<div id="sale-preview" class="wide sale-preview" aria-live="polite"></div>');
         const preview = () => {
@@ -326,25 +437,38 @@ $('#form').onsubmit = async e => {
             if (mode === 'editShow') Object.assign(next.shows.find(x=>x.id===id),show); else next.shows.push(show);
         }
         if (mode === 'sell')
-            addSale(next, id, Number(d.qty), cents(d.total), cents(d.fees), d.date);
+            addSale(next, id, Number(d.qty), cents(d.total), cents(d.fees), d.date, d.showId);
         if (mode === 'expense') {
             if (!d.name.trim())
                 throw Error('Enter a description.');
-            next.expenses.push({ id: uid(), name: d.name.trim(), category: d.category, amount: cents(d.amount), date: d.date });
+            next.expenses.push({ id: uid(), name: d.name.trim(), category: d.category, amount: cents(d.amount), date: d.date, ...(d.showId ? {showId: d.showId} : {}) });
+        }
+        if (mode === 'tagSale' || mode === 'tagExpense') {
+            const records = mode === 'tagSale' ? next.sales : next.expenses;
+            const record = records.find(item => item.id === id);
+            if (!record) throw Error('This record no longer exists.');
+            if (d.showId) record.showId = d.showId;
+            else delete record.showId;
         }
         await save(next);
         $('#modal').close();
+        if (mode === 'sell' && guideActive && state.sales.length === 1) {
+            tab = 'home';
+            render();
+            $('#quick-start').scrollIntoView({block: 'start'});
+        }
     }
     catch (e) {
         $('#error').textContent = e.message;
     }
 };
 $('#content').onclick = async e => { const b = e.target.closest('[data-action]'); if (!b)
-    return; const { action, id } = b.dataset; if (action === 'sell' || action === 'edit' || action === 'editShow')
+    return; const { action, id } = b.dataset; if (action === 'recap') return openRecap(id);
+    if (['sell', 'edit', 'editShow', 'tagSale', 'tagExpense'].includes(action))
     return open(action, id); const n = structuredClone(state);
     if (action === 'remove' && n.sales.some(s => s.cardId === id))
-    return alert('This card has recorded sales. Undo its sales first to remove it, so your profit history stays accurate.'); if (!confirm(action === 'undo' ? 'Undo this sale and return its quantity to inventory?' : 'Remove this record? Export a backup first if you may need it later.'))
-    return; if(action === 'deleteShow') n.shows = (n.shows || []).filter(x=>x.id!==id); if (action === 'remove')
+    return alert('This card has recorded sales. Undo its sales first to remove it, so your profit history stays accurate.'); if (!confirm(action === 'undo' ? 'Undo this sale and return its quantity to inventory?' : action === 'deleteShow' ? 'Remove this show? Its sales and expenses will be kept without a show tag.' : 'Remove this record? Export a backup first if you may need it later.'))
+    return; if(action === 'deleteShow') removeShow(n, id); if (action === 'remove')
     n.cards = n.cards.filter(x => x.id !== id); if (action === 'undo')
     n.sales = n.sales.filter(x => x.id !== id); if (action === 'deleteExpense')
     n.expenses = n.expenses.filter(x => x.id !== id); try {
