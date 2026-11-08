@@ -114,3 +114,15 @@ test('selling fees appear once in the expense view and disappear when the sale i
     assert.equal(expenseEntries(s).length, 1);
     assert.equal(totals(s).fees, 0);
 });
+
+import {cardMilestone} from '../model.js';
+test('card milestones count quantities across saves and survive card removal', () => {
+    const s = data();
+    s.cards[0].qty = 24;
+    assert.deepEqual(cardMilestone(s, 1), {cardsAdded:25, milestone:25});
+    s.cardsAdded = 25;
+    s.cards = [];
+    assert.deepEqual(cardMilestone(s, 1), {cardsAdded:26, milestone:0});
+    assert.deepEqual(cardMilestone(s, 25), {cardsAdded:50, milestone:50});
+    assert.equal(validate(JSON.parse(JSON.stringify(s))).cardsAdded, 25);
+});
