@@ -97,3 +97,20 @@ test('show recap includes only tagged records and removing a show preserves fina
     assert.equal(s.sales[0].showId, undefined);
     assert.equal(s.expenses[0].showId, undefined);
 });
+
+import {expenseEntries} from '../model.js';
+test('selling fees appear once in the expense view and disappear when the sale is undone', () => {
+    const s = data();
+    addSale(s, 'a', 1, 2500, 200, '2026-11-07');
+    addSale(s, 'a', 1, 2000, 0, '2026-11-08');
+    s.expenses.push({id:'e', name:'Table fee', category:'Show', amount:500, date:'2026-11-07'});
+    const entries = expenseEntries(s);
+    assert.deepEqual(entries.map(entry => [entry.amount, entry.source]), [[500, 'manual'], [200, 'sale']]);
+    assert.equal(s.expenses.length, 1);
+    const summary = totals(s);
+    assert.equal(summary.profit, 1800);
+    assert.equal(entries.reduce((sum, entry) => sum + entry.amount, 0), summary.expenses + summary.fees);
+    s.sales.shift();
+    assert.equal(expenseEntries(s).length, 1);
+    assert.equal(totals(s).fees, 0);
+});
