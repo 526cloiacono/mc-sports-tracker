@@ -310,3 +310,20 @@ footer .legal-links{height:auto;min-height:0;align-items:center;justify-content:
     aside nav button { grid-column: span 2; }
     aside nav button:nth-child(n+4) { grid-column: span 3; }
 }
+
+#calendar-add {
+    display: grid;
+    place-items: center;
+    flex: 0 0 44px;
+    height: 44px;
+    padding: 0;
+    font-size: 24px;
+    line-height: 1;
+}
+@media (max-width: 560px) {
+    aside nav button[data-tab="show"] span { white-space: normal; line-height: 1.15; }
+}
+
+.shows-calendar .panel-top { flex-wrap: nowrap; }
+.shows-calendar .panel-top > div { min-width: 0; }
+#calendar-add { align-self: flex-start; }

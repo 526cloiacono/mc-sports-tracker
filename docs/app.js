@@ -21,7 +21,7 @@ const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 for (const button of document.querySelectorAll('nav button')) button.innerHTML=icon(button.dataset.tab)+`<span>${button.textContent}</span>`;
 function lock() {
     const blocked = !ready || busy;
-    for (const selector of ['#add','#restore','#import-local','#clear-show','#calendar-view .calendar-event[data-action]','#content button','#form button[type="submit"]'])
+    for (const selector of ['#add','#calendar-add','#restore','#import-local','#clear-show','#calendar-view .calendar-event[data-action]','#content button','#form button[type="submit"]'])
         document.querySelectorAll(selector).forEach(b => b.disabled = blocked);
     $('#refresh-cloud').disabled = busy || !account;
     $('#signout').disabled = busy;
@@ -474,6 +474,7 @@ $('#content').onclick = async e => { const b = e.target.closest('[data-action]')
 catch (e) {
     alert(e.message);
 } };
+$('#calendar-add').onclick = () => open('showEvent');
 $('#add').onclick = () => open(tab === 'show' ? 'showEvent' : tab === 'expenses' ? 'expense' : 'card');
 $('#hero-add').onclick = () => account ? open('card') : $('#signin-dialog').showModal();
 $('#hero-inventory').onclick = () => { tab='inventory'; $('#search').value=''; render(); };
