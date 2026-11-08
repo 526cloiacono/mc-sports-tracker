@@ -12,7 +12,6 @@ const iconPaths = {
  home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10Z"/>',
  inventory:'<rect x="4" y="5" width="11" height="15" rx="2"/><path d="M9 3h9a2 2 0 0 1 2 2v12M7 15l3-4 3 4"/>',
  show:'<path d="M3 10h18l-2-6H5l-2 6ZM5 10v10h14V10M9 20v-6h6v6M3 10a3 3 0 0 0 4 2 3 3 0 0 0 5 0 3 3 0 0 0 5 0 3 3 0 0 0 4-2"/>',
- calendar:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18m-13 5h2m4 0h2"/>',
  sales:'<path d="m4 17 6-6 4 3 6-9m-6 0h6v6M4 21h16"/>',
  expenses:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h3"/>',
  profit:'<path d="M12 3v18m5-14H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
@@ -200,12 +199,13 @@ function render() {
     $('#hero-count').textContent = all.quantity.toLocaleString();
     $('#hero-value').textContent = money(all.inventory);
     const isCards = tab === 'inventory';
-    const isEvents = tab === 'show' || tab === 'calendar';
+    const isShows = tab === 'show';
     const isHome = tab === 'home';
     renderGuide(isHome);
     for (const selector of ['.heading','#stats','#profit-chart','#sales-summary','#insights','.formula']) $(selector).hidden = !isHome;
     $('.report-controls').hidden = !['home','sales','expenses'].includes(tab);
-    $('.panel').hidden = isHome;
+    $('#records-panel').hidden = isHome;
+    $('#shows-calendar').hidden = !isShows;
     $('#sales-summary').innerHTML = `<span>Sales revenue <b>${money(period.revenue)}</b></span><span>Sold card costs <b>${money(period.cost)}</b></span><span>Selling fees <b>${money(period.fees)}</b></span><span>${from || to ? 'Selected period' : 'All time'} · inventory shown at current cost</span>`;
     $('#stats').innerHTML = [
         ['Net profit', money(period.profit), 'After cost, fees & expenses'],
@@ -216,18 +216,15 @@ function render() {
     if (isHome) renderProfitChart($('#profit-chart'),state,from,to,compactChart.matches);
     $('#insights').innerHTML = `<span><b>${insights.transactions}</b> ${insights.transactions === 1 ? 'sale' : 'sales'} recorded</span><span><b>${insights.quantity}</b> cards sold</span><span><b>${insights.quantity ? money(insights.averageProfit) : '—'}</b> average profit / sold card <small>before business expenses</small></span>`;
     $('#crumb').textContent = tab === 'show' ? 'SHOWS' : tab.toUpperCase();
-    $('#page-kicker').textContent = {home:'OVERVIEW',inventory:'01 / THE COLLECTION',show:'02 / ON THE ROAD',calendar:'03 / WHAT’S NEXT',sales:'04 / YOUR TRACK RECORD',expenses:'05 / THE DETAILS'}[tab];
-    $('#section-title').textContent = { home: 'Home', inventory: 'Your inventory', show: 'Your shows', calendar: 'Show calendar', sales: 'Sales history', expenses: 'Business expenses' }[tab];
-    $('#section-sub').textContent = { home: 'Your collection at a glance.', inventory: 'A home for every card in your collection.', show: 'Plan your next show and keep the details together.', calendar: 'Every show, on your calendar.', sales: 'Every sale, with its true profit.', expenses: 'Table fees, supplies, travel, and more.' }[tab];
-    $('#add').textContent = tab === 'expenses' ? '＋ Add expense' : isEvents ? '＋ Add show' : '＋ Add card';
+    $('#page-kicker').textContent = {home:'OVERVIEW',inventory:'01 / THE COLLECTION',show:'02 / ON THE ROAD',sales:'04 / YOUR TRACK RECORD',expenses:'05 / THE DETAILS'}[tab];
+    $('#section-title').textContent = { home: 'Home', inventory: 'Your inventory', show: 'Your shows', sales: 'Sales history', expenses: 'Business expenses' }[tab];
+    $('#section-sub').textContent = { home: 'Your collection at a glance.', inventory: 'A home for every card in your collection.', show: 'Plan your next show and keep the details together.', sales: 'Every sale, with its true profit.', expenses: 'Table fees, supplies, travel, and more.' }[tab];
+    $('#add').textContent = tab === 'expenses' ? '＋ Add expense' : isShows ? '＋ Add show' : '＋ Add card';
     $('#add').hidden = tab === 'sales';
     $('#filter').hidden = !isCards;
     $('#sort').hidden = !isCards;
     $('#status-filter').hidden = tab !== 'inventory';
     $('#show-summary').hidden = $('#print-show').hidden = $('#clear-show').hidden = true;
-    $('#calendar-view').hidden = tab !== 'calendar';
-    $('#content').hidden = tab === 'calendar';
-    $('#search').hidden = tab === 'calendar';
     $('#search').placeholder = tab === 'show' ? 'Search shows, locations or notes…' : 'Search player, set, card # or cert…';
     document.querySelectorAll('nav button').forEach(button => {
         button.classList.toggle('active', button.dataset.tab === tab);
@@ -270,9 +267,9 @@ function render() {
         heads = ['Show', 'Location', 'Date', 'Time', 'Notes', 'Actions'];
         rows = shows.map(x=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.location)}</td><td>${esc(x.date)}</td><td>${esc(x.time)}</td><td class="show-notes">${esc(x.notes)}</td><td class="actions"><button data-action="recap" data-id="${esc(x.id)}">Recap</button><button data-action="editShow" data-id="${esc(x.id)}">Edit</button><button data-action="deleteShow" data-id="${esc(x.id)}">Remove</button></td></tr>`).join('');
     }
-    if (tab === 'calendar') { renderCalendar(); count = (state.shows || []).filter(x=>x.date.startsWith(`${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth()+1).padStart(2,'0')}`)).length; }
+    if (isShows) renderCalendar();
     const matching = isCards ? selectCards(state,{query:q,grading,status:$('#status-filter').value}) : [];
-    $('#result-count').textContent = `${count} ${isEvents ? (count === 1 ? 'show' : 'shows') : (count === 1 ? 'record' : 'records')} shown` + (isCards && q ? ` · ${matchingCardQuantity(state,matching,$('#status-filter').value)} ${$('#status-filter').value === 'sold' ? 'sold' : 'available'} cards in this search` : '');
+    $('#result-count').textContent = `${count} ${isShows ? (count === 1 ? 'show' : 'shows') : (count === 1 ? 'record' : 'records')} shown` + (isCards && q ? ` · ${matchingCardQuantity(state,matching,$('#status-filter').value)} ${$('#status-filter').value === 'sold' ? 'sold' : 'available'} cards in this search` : '');
     const filtered = q || (isCards && grading !== 'all') || (tab === 'inventory' && $('#status-filter').value !== 'available');
     const emptyTitle = filtered ? 'No matching records' : tab === 'show' ? 'Plan your next show.' : tab === 'inventory' ? 'Your next flip starts here.' : 'No records yet.';
     const emptyBody = filtered ? 'Try another search or change your filters.' : tab === 'show' ? 'Add a show with its location, date, time, and notes. It will appear on your calendar.' : tab === 'inventory' ? 'Add your first card to start tracking your collection and profit.' : 'Your records will appear here as you add them.';
@@ -477,7 +474,7 @@ $('#content').onclick = async e => { const b = e.target.closest('[data-action]')
 catch (e) {
     alert(e.message);
 } };
-$('#add').onclick = () => open(tab === 'show' || tab === 'calendar' ? 'showEvent' : tab === 'expenses' ? 'expense' : 'card');
+$('#add').onclick = () => open(tab === 'show' ? 'showEvent' : tab === 'expenses' ? 'expense' : 'card');
 $('#hero-add').onclick = () => account ? open('card') : $('#signin-dialog').showModal();
 $('#hero-inventory').onclick = () => { tab='inventory'; $('#search').value=''; render(); };
 $('#close').onclick = () => $('#modal').close();
@@ -504,7 +501,7 @@ $('#file').onchange = async (e) => { try {
 catch (e) {
     alert(e.message);
 } e.target.value = ''; };
-$('#csv').onclick = () => { const data = tab === 'show' || tab === 'calendar' ? state.shows || [] : tab === 'inventory' ? state.cards.map(c=>({...c,remaining:remaining(state,c)})) : state[tab]; if (!data.length)
+$('#csv').onclick = () => { const data = tab === 'show' ? state.shows || [] : tab === 'inventory' ? state.cards.map(c=>({...c,remaining:remaining(state,c)})) : state[tab]; if (!data.length)
     return alert('No records to export.'); const fields = [...new Set(data.flatMap(r => Object.keys(r)))].filter(k => k !== 'ask'), cell = v => '"' + String(v ?? '').replace(/^[=+@-]/, "'$&").replaceAll('"', '""') + '"'; download([fields.map(cell).join(','), ...data.map(r => fields.map(k => cell(r[k])).join(','))].join('\r\n'), 'mc-sports-' + tab + '-cents.csv', 'text/csv'); $('#notice').textContent = 'CSV exported. Monetary fields are in cents.'; };
 compactChart.addEventListener('change', () => { if (tab === 'home') render(); });
 render();

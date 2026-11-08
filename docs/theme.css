@@ -303,3 +303,10 @@ footer .legal-links{height:auto;min-height:0;align-items:center;justify-content:
     .quick-start ol { grid-template-columns: 1fr; }
     .quick-start button { min-height: 44px; }
 }
+
+.shows-calendar { margin-bottom: 18px; }
+@media (max-width: 560px) {
+    aside nav { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    aside nav button { grid-column: span 2; }
+    aside nav button:nth-child(n+4) { grid-column: span 3; }
+}
