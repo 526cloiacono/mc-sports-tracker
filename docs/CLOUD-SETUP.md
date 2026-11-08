@@ -22,7 +22,7 @@ Account-deletion requests are manual. Do not treat an Instagram username or clai
 
 Remaining launch setup:
 1. Choose and connect a production hosting account that permits the intended business use (for example Cloudflare Pages). The static publish directory is docs; no build command is needed. GitHub Pages commercial-use restrictions still apply to the existing deployment.
-2. Set the Supabase Auth Site URL to the final HTTPS app URL and allow that exact URL in redirect settings. app.js currently pins the GitHub Pages URL in redirectTo; update it during migration so confirmation/reset links return to the new host. Sessions saved on the old browser origin do not transfer; users sign in again. Cloud portfolio data remains in the same Supabase project.
+2. Set the Supabase Auth Site URL to the final HTTPS app URL and allow that exact URL in redirect settings. The app builds its confirmation and reset URLs from its current hosting location. Allow the new exact URL in Supabase before testing email flows. Sessions saved on the old browser origin do not transfer; users sign in again. Cloud portfolio data remains in the same Supabase project.
 3. Configure a verified sender/domain and custom SMTP in Supabase Authentication. Keep provider credentials out of the repository and frontend. Keep email confirmation enabled. Test registration, confirmation, login, reset, and recovery using an owner-approved test address. The connector currently provides no Auth configuration/SMTP management capability; use the Supabase dashboard.
 4. Verify the intended public brand/domain and review the published policies for the operator's jurisdiction and practices. An exact purchased domain has not been supplied.
 
@@ -31,3 +31,9 @@ Remaining launch setup:
 The star in the tracker opens approved reviews. Signed-in users can submit one rating and comment per account. The database stores the account ID for duplicate prevention and account deletion. Public API readers can only see approved reviews and cannot select account IDs or approve submissions.
 
 Moderate in the Supabase Table Editor under public.tracker_reviews. Read the comment, remove reviews that reveal private information, and set approved to true for reviews that are ready to publish. Do not approve or reject based on the star rating. Account deletion removes the associated review automatically.
+
+## Cloudflare Pages deployment
+
+Connect the existing 526cloiacono/mc-sports-tracker GitHub repository in Workers & Pages and choose Pages. Use the Free plan, the main branch, framework preset None, repository root, no build command, and docs as the output directory. The app already includes its browser bundle and does not need a server or separate database.
+
+After a successful deployment, allow the exact new HTTPS address in Supabase Auth URL Configuration. Confirm existing sign-in and record loading on the new host. Configure custom SMTP with a verified sender, then test signup and reset with an address outside the project team before sharing the address widely.

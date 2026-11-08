@@ -643,7 +643,7 @@ for (const selector of ['#signup-dialog','#reset-dialog']) {
         if(!account && !document.querySelector('dialog[open]')) $('#signin-dialog').showModal();
     });
 }
-const redirectTo = 'https://526cloiacono.github.io/mc-sports-tracker/';
+const redirectTo = new URL('./', import.meta.url).href;
 $('#auth-form').onsubmit=async e=> {
     e.preventDefault();
     const submit=$('#auth-form button[type="submit"]') || $('#auth-form .signin-submit');
