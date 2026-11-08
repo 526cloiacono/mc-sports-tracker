@@ -69,3 +69,31 @@ test('shows persist independently of inventory and old backups remain valid',()=
  for(const value of ['2026-02-30','bad','2026-13-01']){const bad=structuredClone(s);bad.shows[0].date=value;assert.throws(()=>validate(bad));}
  const bad=structuredClone(s);bad.shows[0].time='25:00';assert.throws(()=>validate(bad));bad.shows[0].time='09:00';bad.shows[0].id='a';assert.throws(()=>validate(bad));
 });
+
+import {inventoryAge, showRecap, removeShow} from '../model.js';
+test('inventory age uses purchase dates and leaves missing dates at the end', () => {
+    const s = data();
+    s.cards.push({...s.cards[0], id:'new', purchaseDate:'2026-11-07'});
+    s.cards.push({...s.cards[0], id:'old', purchaseDate:'2026-10-31'});
+    assert.deepEqual(selectCards(s, {sort:'oldest'}).map(c => c.id), ['old', 'new', 'a']);
+    assert.equal(inventoryAge('2026-10-31', '2026-11-07'), 7);
+    assert.equal(inventoryAge(undefined, '2026-11-07'), null);
+    assert.equal(inventoryAge('2026-11-08', '2026-11-07'), null);
+});
+
+test('show recap includes only tagged records and removing a show preserves financial totals', () => {
+    const s = data();
+    s.shows = [{id:'show', name:'Card show', location:'Hall', date:'2026-11-07', time:'10:00', notes:''}];
+    addSale(s, 'a', 1, 2500, 200, '2026-11-07', 'show');
+    addSale(s, 'a', 1, 1800, 100, '2026-11-07');
+    s.expenses.push({id:'e', name:'Table fee', category:'Show', amount:500, date:'2026-11-07', showId:'show'});
+    s.expenses.push({id:'e2', name:'Supplies', category:'Supplies', amount:300, date:'2026-11-07'});
+    const recap = showRecap(validate(JSON.parse(JSON.stringify(s))), 'show');
+    assert.deepEqual([recap.revenue, recap.cost, recap.fees, recap.expenses, recap.profit, recap.saleCount], [2500, 1000, 200, 500, 800, 1]);
+    const before = totals(s);
+    removeShow(s, 'show');
+    validate(s);
+    assert.deepEqual(totals(s), before);
+    assert.equal(s.sales[0].showId, undefined);
+    assert.equal(s.expenses[0].showId, undefined);
+});
